@@ -591,7 +591,8 @@ emblem:
   estuary, in the land colour of the nearest country in every theme. Water drawn after it cuts channels through it.
 - `facing` is the compass bearing a unit faces. `width` runs along its front and `depth` from front to back.
   `bow` bends the front: a positive value pushes the centre towards the enemy, a negative one draws it back.
-- `count` sets the number of pieces in a unit drawn as a row, and `rows` the lines of ships.
+- `count` sets the number of pieces in a unit drawn as a row, and `rows` the lines of ships or wagons. A wagon fort spreads its `count` wagons round the ring, and `gaps: [0, { bearing: 135, wagons: 3 }]` leaves
+  wagons out at those compass bearings from its centre, for a gate, an opening or a breach.
 - Arrows curve through their points. `dashed` marks a retreat, and `fire` marks shooting, drawn as three
   thin arrows that spread towards the target. Each arrow has a thin edge in the paper colour, and a later
   arrow draws over an earlier one. A work is a straight wall, or a zigzag with `style: trench`.
@@ -618,6 +619,10 @@ emblem:
 | `camp`       | a square ring                         | a camp                                  |
 | `square`     | a square ring                         | an infantry square                      |
 | `fort`       | walls round a court, corner bastions  | forts and castles, `width` across       |
+| `wagons`     | carts end to end, chained, a board to the front | war wagons in a line, `rows` lines on the march |
+| `wagon-fort` | carts chained in an oval ring, boards outwards | a wagon fort, `depth` 0.6 of `width` unless set |
+| `handguns`   | a loose row of squares with a barrel each | handgunners, arquebusiers, musketeers  |
+| `pavises`    | a row of tall shields                 | pavise bearers, a shield wall           |
 
 A battle plan of one or two kilometres needs a closer zoom than the default, so a battle with battle plans
 sets `max_zoom` in `battle.yaml`. The example's battle draws one.

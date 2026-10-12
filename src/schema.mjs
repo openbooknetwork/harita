@@ -83,7 +83,7 @@ export const Page = z.object({
 
 // The battle-plan emblem: troops, movements, water and works at one moment of a battle. Sizes are in metres.
 export const UNIT_TYPES = ['infantry', 'cavalry', 'knights', 'pikes', 'light', 'archers', 'irregular', 'elephants', 'chariots', 'siege', 'artillery',
-  'armour', 'aircraft', 'ships', 'submarines', 'camp', 'square', 'fort'];
+  'armour', 'aircraft', 'ships', 'submarines', 'camp', 'square', 'fort', 'wagons', 'wagon-fort', 'handguns', 'pavises'];
 const LngLat = z.tuple([Lon, Lat]);
 const Piece = { name: Translatable.optional(), id: z.string().min(1).optional() }; // a named piece shows on pointing
 const PlanSide = z.string().min(1); // a family of the story, neutral or a hex colour, checked when drawing
@@ -98,7 +98,9 @@ export const BattlePlan = z.object({
   works: z.array(z.object({ side: PlanSide.optional(), path: z.array(LngLat).min(2), width: Size.optional(), style: z.enum(['wall', 'trench']).optional(), ...Piece }).strict()).default([]),
   units: z.array(z.object({
     side: PlanSide, type: z.enum(UNIT_TYPES).default('infantry'), at: LngLat, width: Size, depth: Size.optional(),
-    facing: z.number().optional(), bow: z.number().optional(), count: z.number().int().positive().optional(), rows: z.number().int().positive().optional(), ...Piece,
+    facing: z.number().optional(), bow: z.number().optional(), count: z.number().int().positive().optional(), rows: z.number().int().positive().optional(),
+    // wagon-fort only: openings at compass bearings from the centre, one wagon wide unless `wagons` says more
+    gaps: z.array(z.union([z.number(), z.object({ bearing: z.number(), wagons: z.number().int().positive().optional() }).strict()])).optional(), ...Piece,
   }).strict()).default([]),
   arrows: z.array(z.object({ side: PlanSide, path: z.array(LngLat).min(2), width: Size.optional(), style: z.enum(['solid', 'dashed', 'fire']).optional(), ...Piece }).strict()).default([]),
   clashes: z.array(z.union([LngLat, z.object({ at: LngLat, size: Size.optional() }).strict()])).default([]),

@@ -547,6 +547,29 @@ test('every unit type draws closed rings', async () => {
   }
 });
 
+test('a wagon fort draws its wagons round the ring, each a body, a board, two wheels and a chain', async () => {
+  const { default: battlePlan } = await import('../src/emblems/battle-plan.mjs');
+  const fc = battlePlan({ units: [{ side: 'neutral', type: 'wagon-fort', at: [10, 45], width: 400, count: 12, name: 'Wagon fort' }] });
+  const pieces = fc.features.filter(f => !f.properties.hit), hit = fc.features.filter(f => f.properties.hit);
+  assert.equal(pieces.length, 12 * 5);
+  assert.equal(hit.length, 1);
+  // the ring is 400 m along the front and 240 m deep by default
+  const ys = pieces.flatMap(f => f.geometry.coordinates[0].map(([, lat]) => (lat - 45) * 110540)), xs = pieces.flatMap(f => f.geometry.coordinates[0].map(([lon]) => (lon - 10) * 111320 * Math.cos(Math.PI / 4)));
+  assert.ok(Math.max(...xs) > 180 && Math.max(...xs) < 240, `east edge ${Math.max(...xs)}`);
+  assert.ok(Math.max(...ys) > 100 && Math.max(...ys) < 150, `north edge ${Math.max(...ys)}`);
+});
+
+test('a gap leaves out the wagons nearest its bearing and the chains to them', async () => {
+  const { default: battlePlan } = await import('../src/emblems/battle-plan.mjs');
+  const fort = gaps => battlePlan({ units: [{ side: 'neutral', type: 'wagon-fort', at: [10, 45], width: 400, count: 12, facing: 90, gaps }] }).features;
+  // a wagon is a body, a board and two wheels, and each chain joins two wagons
+  assert.equal(fort([0]).length, 11 * 4 + 10);
+  assert.equal(fort([{ bearing: 180, wagons: 3 }]).length, 9 * 4 + 8);
+  // the wagons left out are the northernmost: two stand either side of the north end
+  const north = feats => Math.max(...feats.flatMap(f => f.geometry.coordinates[0].map(([, lat]) => lat)));
+  assert.ok(north(fort([{ bearing: 0, wagons: 2 }])) < north(fort([{ bearing: 180, wagons: 2 }])));
+});
+
 test('every arrow style draws closed rings on a casing each', async () => {
   const { default: battlePlan } = await import('../src/emblems/battle-plan.mjs');
   const drawn = arrow => battlePlan({ arrows: [{ side: 'neutral', path: [[10, 45], [10.01, 45.005], [10.02, 45.004]], ...arrow }] }).features;

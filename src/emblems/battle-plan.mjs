@@ -16,7 +16,11 @@
 // chariots (a row of cars on an axle with a pole), siege (siege engines, wedges on a base), artillery (a row of guns,
 // a wheel with a barrel towards the enemy), armour (tanks, block with a track cut into it), aircraft (planes in a V),
 // ships (a line of hulls, `rows`), submarines (hull outlines, `rows`), camp (a square ring), square (an infantry
-// square, drawn as a camp), fort (a ring with a bastion at each corner, `width` across). The rows take `count`.
+// square, drawn as a camp), fort (a ring with a bastion at each corner, `width` across), wagons (war wagons end to end,
+// chained, a board on the side towards the enemy, `rows` lines of them), wagon-fort (wagons chained in an oval ring,
+// boards outwards, `depth` defaults to 0.6 of `width`, `gaps` leaves wagons out at compass bearings from its centre,
+// for a gate, an opening or a breach: `gaps: [0, { bearing: 135, wagons: 3 }]`), handguns (a loose row of squares, each with a barrel towards
+// the enemy), pavises (a row of tall shields). The rows take `count`.
 // A work with style trench zigzags, the default is a straight wall.
 // `facing` is the compass bearing the unit faces. `width` runs along its front, `depth` front to back.
 // `bow` bends the front: positive pushes the centre towards the enemy, negative draws it back.
@@ -59,7 +63,8 @@ export default function battlePlan(spec, { families = {} } = {}) {
     add([ribbon(w.style === 'trench' ? zigzag(pts, width * 3, width * 1.2) : pts, width, width)], { ...look(w.side ?? 'neutral'), ...label(w) });
   }
   // a named row of pieces gets an undrawn footprint, so the reader can point at the gaps as well as the pieces
-  const gappy = new Set(['light', 'archers', 'irregular', 'elephants', 'chariots', 'siege', 'ships', 'submarines', 'artillery', 'aircraft']);
+  const gappy = new Set(['light', 'archers', 'irregular', 'elephants', 'chariots', 'siege', 'ships', 'submarines', 'artillery', 'aircraft',
+    'wagons', 'wagon-fort', 'handguns', 'pavises']);
   for (const u of units) {
     if (u.name != null && gappy.has(u.type)) add([footprint(u, toM)], { ...look(u.side), ...label(u), hit: true });
     for (const rings of unitShapes(u, toM)) add(rings, { ...look(u.side), ...label(u) });
@@ -83,7 +88,7 @@ const fail = msg => { throw new Error(`battle-plan: ${msg}`); };
 
 // --- units: drawn in local coordinates (u along the front to the right, v towards the enemy), then bent and placed ---
 function unitShapes(u, toM) {
-  const type = u.type ?? 'infantry', W = u.width, D = u.depth ?? Math.max(60, W / 5);
+  const type = u.type ?? 'infantry', W = u.width, D = depthOf(u);
   const [cx, cy] = toM(u.at), th = (u.facing ?? 0) * Math.PI / 180, bow = u.bow ?? 0;
   const fx = Math.sin(th), fy = Math.cos(th), rx = Math.cos(th), ry = -Math.sin(th);
   // only a bent front needs extra points along its edges
@@ -160,12 +165,71 @@ function unitShapes(u, toM) {
         [[x - s * 0.5, y - s * 0.08], [x + s * 0.5, y - s * 0.08], [x + s * 0.08, y + s * 0.16], [x - s * 0.08, y + s * 0.16]],
         [[x - s * 0.2, y - s * 0.5], [x + s * 0.2, y - s * 0.5], [x + s * 0.05, y - s * 0.36], [x - s * 0.05, y - s * 0.36]]].map(q => [place(q)]); });
   }
+  if (type === 'wagons') { // carts end to end in each row, chained, wheels behind and a board towards the enemy
+    const rows = u.rows ?? 1, b = D / rows, n = u.count ?? Math.max(2, Math.round(W / (b * 1.5))), l = W / n * 0.82;
+    return [...Array(rows)].flatMap((_, k) => {
+      const yr = rows === 1 ? 0 : -d + b / 2 + k * b, xs = [...Array(n)].map((_, i) => n === 1 ? 0 : -w + l / 2 + i * (W - l) / (n - 1));
+      return wagonRow(xs.map(x => [x, yr]), xs.map(() => [1, 0]), l, b * 0.46).map(q => [place(q)]);
+    });
+  }
+  if (type === 'wagon-fort') { // carts chained in an oval ring, boards outwards
+    const ring = ellipse(w, d, 360), cum = [0];
+    for (let k = 1; k <= ring.length; k++) cum.push(cum[k - 1] + Math.hypot(ring[k % ring.length][0] - ring[k - 1][0], ring[k % ring.length][1] - ring[k - 1][1]));
+    const P = cum.at(-1), n = u.count ?? Math.max(8, Math.round(P / (Math.min(W, D) * 0.3))), l = P / n * 0.78;
+    // the point and the direction of travel at arc length s
+    const along = s => { const k = Math.max(0, cum.findIndex(c => c > s) - 1), p = ring[k], q = ring[(k + 1) % ring.length], t = (s - cum[k]) / (cum[k + 1] - cum[k]), len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      return { at: [p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])], dir: [(q[0] - p[0]) / len, (q[1] - p[1]) / len] }; };
+    const carts = [...Array(n)].map((_, i) => along((i + 0.5) * P / n));
+    // a gap removes the wagons nearest its compass bearing, measured from the fort's centre
+    const skip = new Set(), bearingOf = ([a, b]) => ((u.facing ?? 0) + Math.atan2(a, b) * 180 / Math.PI + 360) % 360;
+    for (const g of u.gaps ?? []) {
+      const { bearing, wagons = 1 } = typeof g === 'number' ? { bearing: g } : g, off = i => Math.abs(((bearingOf(carts[i].at) - bearing) % 360 + 540) % 360 - 180);
+      [...carts.keys()].sort((i, j) => off(i) - off(j)).slice(0, wagons).forEach(i => skip.add(i));
+    }
+    return wagonRow(carts.map(c => c.at), carts.map(c => c.dir), l, Math.min(l * 0.58, Math.min(w, d) * 0.3), true, skip).map(q => [place(q)]);
+  }
+  if (type === 'handguns') { // a loose row of small squares, each with a barrel towards the enemy
+    const s = D * 0.38, n = u.count ?? Math.max(3, Math.round(W / (s * 2.2))), bw = s * 0.22;
+    return [...Array(n)].flatMap((_, i) => { const x = -w + s / 2 + i * (W - s) / Math.max(1, n - 1), y = (i % 2 ? -0.3 : -0.12) * D;
+      return [[place(rect(x - s / 2, y - s / 2, x + s / 2, y + s / 2))], [place(rect(x - bw / 2, y + s / 2, x + bw / 2, y + s * 1.4))]]; });
+  }
+  if (type === 'pavises') { // tall shields side by side, rounded at the end towards the enemy
+    const n = u.count ?? Math.max(3, Math.round(W / (D * 0.45))), sw = (W - (n - 1) * gap) / n, h = D * 0.8, r = Math.min(sw / 2, h / 2);
+    return [...Array(n)].map((_, i) => { const x0 = -w + i * (sw + gap), xm = x0 + sw / 2, top = h / 2 - r;
+      return [place([[x0, -h / 2], [x0 + sw, -h / 2], ...[...Array(9)].map((_, k) => [xm + sw / 2 * Math.cos(Math.PI * k / 8), top + r * Math.sin(Math.PI * k / 8)])])]; });
+  }
   if (type === 'fort') { // walls round a square court with a bastion at each corner, width across
     const m = w * 0.74, c = w * 0.42;
     return [[place([[-w, -w], [0, -m], [w, -w], [m, 0], [w, w], [0, m], [-w, w], [-m, 0]]), place(rect(-c, -c, c, c))]];
   }
 }
 const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+const depthOf = u => u.depth ?? (u.type === 'wagon-fort' ? u.width * 0.6 : Math.max(60, u.width / 5));
+const ellipse = (a, b, n) => [...Array(n)].map((_, k) => [a * Math.cos(2 * Math.PI * k / n), b * Math.sin(2 * Math.PI * k / n)]);
+// wagons l long and t deep at the given centres, each along its direction: a body with two wheels on the inner side,
+// a board on the outer side and a chain to the next wagon. Outer is the left of the direction for a row, away from
+// the centre for a ring, which also chains the last wagon to the first.
+function wagonRow(centres, dirs, l, t, ring = false, skip = new Set()) {
+  const out = [], ends = [];
+  centres.forEach(([cx, cy], i) => {
+    let [tx, ty] = dirs[i], [nx, ny] = [-ty, tx];
+    if (ring && nx * cx + ny * cy < 0) { nx = -nx; ny = -ny; }
+    const pt = (p, q) => [cx + p * tx + q * nx, cy + p * ty + q * ny], box = (p0, q0, p1, q1) => [pt(p0, q0), pt(p1, q0), pt(p1, q1), pt(p0, q1)];
+    ends.push([pt(-l / 2, -t * 0.19), pt(l / 2, -t * 0.19)]);
+    if (skip.has(i)) return;
+    out.push(box(-l / 2, -t * 0.5, l / 2, t * 0.12), box(-l / 2, t * 0.26, l / 2, t * 0.5));
+    for (const p of [-l * 0.3, l * 0.3]) out.push([...Array(12)].map((_, k) => pt(p + t * 0.2 * Math.cos(k * Math.PI / 6), -t * 0.5 + t * 0.2 * Math.sin(k * Math.PI / 6))));
+  });
+  // a chain is a thin band from the end of one wagon to the start of the next
+  for (let i = 0; i < ends.length - (ring ? 0 : 1); i++) {
+    if (skip.has(i) || skip.has((i + 1) % ends.length)) continue;
+    const a = ends[i][1], b = ends[(i + 1) % ends.length][0], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len < 1e-6) continue;
+    const h = t * 0.06, ox = -(b[1] - a[1]) / len * h, oy = (b[0] - a[0]) / len * h;
+    out.push([[a[0] + ox, a[1] + oy], [b[0] + ox, b[1] + oy], [b[0] - ox, b[1] - oy], [a[0] - ox, a[1] - oy]]);
+  }
+  return out;
+}
 const disc = (x, y, r) => [...Array(16)].map((_, k) => [x + r * Math.cos(k * Math.PI / 8), y + r * Math.sin(k * Math.PI / 8)]);
 // a long oval: a rectangle with round ends, half width a and half height b around the origin
 const stadium = (a, b) => { const r = Math.min(a, b), c = a - r; return [...Array(12)].map((_, k) => { const t = -Math.PI / 2 + Math.PI * k / 11; return [c + r * Math.cos(t), r * Math.sin(t)]; })
@@ -181,9 +245,10 @@ function clip(poly, nx, ny, c) {
 
 // the rectangle a unit stands in, placed and bent like the unit
 function footprint(u, toM) {
-  const W = u.width, D = u.depth ?? Math.max(60, W / 5), [cx, cy] = toM(u.at), th = (u.facing ?? 0) * Math.PI / 180, bow = u.bow ?? 0;
+  const W = u.width, D = depthOf(u), [cx, cy] = toM(u.at), th = (u.facing ?? 0) * Math.PI / 180, bow = u.bow ?? 0;
   const fx = Math.sin(th), fy = Math.cos(th), rx = Math.cos(th), ry = -Math.sin(th), w = W / 2, d = D / 2;
-  return densify([[-w, -d], [w, -d], [w, d], [-w, d]], Math.max(W, D) / 40).map(([a, b]) => { const v = b + bow * (1 - (2 * a / W) ** 2); return [cx + a * rx + v * fx, cy + a * ry + v * fy]; });
+  // a wagon fort can be pointed at anywhere inside its ring
+  return (u.type === 'wagon-fort' ? ellipse(w, d, 64) : densify([[-w, -d], [w, -d], [w, d], [-w, d]], Math.max(W, D) / 40)).map(([a, b]) => { const v = b + bow * (1 - (2 * a / W) ** 2); return [cx + a * rx + v * fx, cy + a * ry + v * fy]; });
 }
 
 // move the edges of a convex polygon inwards, edge i (from vertex i to i+1) by offsets[i]
