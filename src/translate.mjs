@@ -12,7 +12,7 @@ export function i18n({ root = process.cwd(), lang, story, log = console.log } = 
   // one story builds alone into a folder thrown away after, so a half edited story elsewhere does not stop it
   const out = story && fs.mkdtempSync(path.join(os.tmpdir(), 'harita-i18n-'));
   let r;
-  try { r = buildPages({ root, log: () => {}, story, out }); } finally { if (out) fs.rmSync(out, { recursive: true, force: true }); }
+  try { r = buildPages({ root, log: () => {}, story, out, localAssets: true }); } finally { if (out) fs.rmSync(out, { recursive: true, force: true }); }
   const written = [];
   const write = (file, entries, heading) => {
     const existing = fs.existsSync(file) ? flatten(yaml.load(fs.readFileSync(file, 'utf8')) ?? {}) : {};

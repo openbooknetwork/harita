@@ -45,7 +45,7 @@ test('writePlan writes the emblem, bbox, markers and routes and keeps the rest o
   assert.ok(fs.existsSync(path.join(page, 'routes/to-the-rift.geojson')));
   assert.match(fs.readFileSync(path.join(page, 'markers.yaml'), 'utf8'), /^lawrock:\n {2}lnglat: \[/m);
   // the written page builds
-  buildPages({ root, log: () => {}, cache: path.join(root, '.cache/harita') });
+  buildPages({ root, log: () => {}, cache: path.join(root, '.cache/harita'), localAssets: true });
 });
 
 test('coast lists the shore points of a country inside a box', () => {

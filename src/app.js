@@ -59,7 +59,7 @@ const sliceRoute = (coords, t) => t <= 0 ? [] : turf.lineSliceAlong(turf.lineStr
 function markerEl(m, battle){
   const el = document.createElement('div'); el.className = battle ? 'mk battle' : 'mk'; el.style.setProperty('--c', `var(${colorVar(m.color)})`);
   const im = m.image ? B.images[m.image] : null;
-  const photo = im ? `<img class="ph" src="${esc(im.src)}" alt="${esc(L(im.caption))}" tabindex="0" data-img="${esc(m.image)}"><span class="ic badge">${ICONS[m.icon]}</span>` : `<span class="ic">${ICONS[m.icon]}</span>`;
+  const photo = im ? `<img class="ph" src="${esc(im.thumb)}" alt="${esc(L(im.caption))}" tabindex="0" data-img="${esc(m.image)}"><span class="ic badge">${ICONS[m.icon]}</span>` : `<span class="ic">${ICONS[m.icon]}</span>`;
   el.innerHTML = `<span class="wrap">${photo}</span><b>${esc(L(m.label))}</b><small>${esc(L(m.note))}</small>`;
   return el;
 }

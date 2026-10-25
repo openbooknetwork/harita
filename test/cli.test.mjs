@@ -38,8 +38,8 @@ test('build in the example exits 0 and writes dist/', async () => {
   fs.cpSync(EXAMPLE, root, { recursive: true });
   // fill the elevation cache with a stand-in tile first, so the command finds every tile and stays offline
   const tile = PNG.sync.write(new PNG({ width: 256, height: 256 }));
-  await build({ root, log: () => {}, elevation: async () => tile });
-  const r = run(root, 'build');
+  await build({ root, log: () => {}, elevation: async () => tile, localAssets: true });
+  const r = run(root, 'build', '--local-assets');
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /wrote dist\/settlement-of-iceland\/ \(story\.js/);
   assert.ok(fs.existsSync(path.join(root, 'dist/index.html')));
@@ -67,13 +67,13 @@ test('coast prints the shore points inside a box, western longitudes included', 
 test('image writes a story image folder and prints its name, or the usage when the caption is missing', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'harita-cli-'));
   fs.cpSync(EXAMPLE, root, { recursive: true });
-  fs.writeFileSync(path.join(root, 'farm.png'), '');
+  fs.writeFileSync(path.join(root, 'farm.png'), PNG.sync.write(new PNG({ width: 4, height: 4 })));
   const r = run(root, 'image', 'farm.png', 'farm', '--caption', 'The farm', '--story', 'settlement-of-iceland');
   assert.equal(r.status, 0, r.stderr);
   const id = r.stdout.match(/name it as (farm-[0-9a-f]{6})\n$/)[1];
-  assert.match(fs.readFileSync(path.join(root, 'content/settlement-of-iceland/shared/images', id, 'image.yaml'), 'utf8'), /^caption: The farm\nsha256: [0-9a-f]{64}\n$/);
-  assert.match(run(root, 'rehash').stdout, /^wrote the sha256 of 0 image folders\n$/);
-  assert.match(run(root, 'image', 'farm.png', 'farm').stderr, /^error: usage: harita image <file> <name> --caption <text>/);
+  assert.match(fs.readFileSync(path.join(root, 'content/settlement-of-iceland/shared/images', id, 'image.yaml'), 'utf8'), /^caption: The farm\nfile: image\.png\nsha256: [0-9a-f]{64}\n$/);
+  assert.match(run(root, 'rehash').stdout, /^wrote the file and sha256 of 0 image folders\n$/);
+  assert.match(run(root, 'image', 'farm.png', 'farm').stderr, /^error: usage: harita image <file or url> <name> --caption <text>/);
 });
 
 test('zones prints the pairs it finds and where the review page is', () => {

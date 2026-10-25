@@ -61,18 +61,21 @@ ${entries.map(e => `<url><loc>${esc(e.loc)}</loc>${e.alternates.map(a => `<xhtml
 // The site as the page builders use it: url ends in a slash, abs() turns a path from the site root into a URL.
 export function siteContext({ url, title, languages, defaultLanguage }) {
   const base = url ? url.replace(/\/?$/, '/') : null;
-  // abs resolves ../ as well, for an image in dist/images/ that a story names as ../images/<id>
+  // abs keeps an absolute URL, such as an image's in the asset store, as it is
   return { url: base, title, langs: languages, defaultLang: defaultLanguage, abs: p => new URL(p, base).href, root: base ? new URL(base).pathname : '/' };
 }
 
 // Every file of one story folder: the bare and per language overviews, a page per step and language, the story as
 // Markdown per language, and with a site URL its sitemap. bundle is what story.js carries. texts and images are
-// per page id and language: the Markdown source, and the first image the text shows.
-export function storyFiles({ shell, bundle: B, texts, firstImages, site: siteIn, versions }) {
+// per page id and language: the Markdown source, and the first image the text shows. links holds each image's
+// original and og:image links, absolute or from the site root, and coverImage is the id of the story's cover.
+export function storyFiles({ shell, bundle: B, texts, firstImages, links, coverImage = null, site: siteIn, versions }) {
   const site = { ...siteIn, title: B.site.title }, files = {}, id = B.id, langs = B.languages, def = B.defaultLanguage, pages = B.pages;
   const homeLang = l => site.langs.includes(l) ? l : site.defaultLang;
-  const imageUrl = imgId => site.url ? site.abs(`${id}/${B.images[imgId].src}`) : B.images[imgId].src;
-  const cover = B.cover && site.url ? site.abs(`${id}/${B.cover}`) : null;
+  // the Markdown file sits in the story folder, so a link from the site root goes one folder up
+  const imageUrl = imgId => site.url ? site.abs(links[imgId].original) : /^https?:/.test(links[imgId].original) ? links[imgId].original : `../${links[imgId].original}`;
+  const ogImage = imgId => site.url ? site.abs(links[imgId].og) : null;
+  const cover = coverImage ? ogImage(coverImage) : null;
   const overviewAt = l => `${id}/${l}/`, stepAt = (l, pid) => `${id}/${l}/${pid}/`;
 
   const nav = (lang, cur) => {
@@ -112,7 +115,7 @@ export function storyFiles({ shell, bundle: B, texts, firstImages, site: siteIn,
       const L = f => pick(f, lang, def), T = B.ui[lang];
       const description = describe(firstParagraph(p.html[lang]));
       const canonical = site.url ? site.abs(stepAt(lang, p.id)) : null;
-      const image = firstImages[p.id]?.[lang] ? (site.url ? imageUrl(firstImages[p.id][lang]) : null) : cover;
+      const image = firstImages[p.id]?.[lang] ? ogImage(firstImages[p.id][lang]) : cover;
       const sources = p.sources[lang].length ? `<h3>${esc(T.sources)}</h3><ol>${p.sources[lang].map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '';
       const step = (j, label) => pages[j] ? `<a href="${lang}/${pages[j].id}/" data-page="${j}">${esc(label)}: ${esc(L(pages[j].title))}</a>` : '<span></span>';
       const text = `<div class="date">${esc(L(p.date))}</div><h2>${esc(L(p.title))}</h2>${p.html[lang]}${sources}<p class="steps">${step(i - 1, T.prev)}${step(i + 1, T.next)}</p>`;
@@ -158,13 +161,13 @@ function markdown(B, lang, texts, imageUrl) {
 }
 
 // The main page per language and bare at the root, the 404 page, and with a site URL the crawl files. data is
-// what the main page script reads as SITE, cards the stories it lists.
-export function siteFiles({ shell, data: S, site: siteIn, common, themeCss, ui }) {
+// what the main page script reads as SITE, cards the stories it lists. image is the og:image link of the first cover,
+// absolute or from the site root.
+export function siteFiles({ shell, data: S, image: imageIn = null, site: siteIn, common, themeCss, ui }) {
   const site = { ...siteIn, title: S.title }, files = {}, langs = S.languages, def = S.defaultLanguage;
   const storyLang = (s, l) => s.languages.includes(l) ? l : s.defaultLanguage;
   const homeAt = l => `${l}/`;
-  const firstCover = S.stories.find(s => s.cover);
-  const image = firstCover && site.url ? site.abs(`${firstCover.id}/${firstCover.cover}`) : null;
+  const image = imageIn && site.url ? site.abs(imageIn) : null;
 
   const main = (lang, base, bare) => {
     const L = f => pick(f, lang, def), T = S.ui[lang];
@@ -180,7 +183,7 @@ export function siteFiles({ shell, data: S, site: siteIn, common, themeCss, ui }
           <div class="meta"><span>${s.pages} ${esc(T.pages)}</span><span>${esc(s.languages.map(l => S.ui[l]?.name ?? l).join(', '))}</span></div>
           <a class="open" href="${esc(s.id)}/${storyLang(s, lang)}/">${esc(T.open)}</a>
         </div>
-        <div class="cover">${s.cover ? `<img src="./${esc(s.id)}/${esc(s.cover)}" alt="">` : `<span>${esc(L(s.title))}</span>`}</div>
+        <div class="cover">${s.cover ? `<img src="${esc(s.cover)}" alt="">` : `<span>${esc(L(s.title))}</span>`}</div>
       </div>
     </li>`).join('');
     let html = fill(shell, '<html lang="en">', `<html lang="${lang}" dir="${T.dir}">`);

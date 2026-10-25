@@ -1,6 +1,7 @@
 // Walk content/<story>/, clean the geometry, render the texts, and write dist/.
 import fs from 'fs';
 import path from 'path';
+import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import yaml from 'js-yaml';
@@ -13,13 +14,14 @@ import { check, Site, Story, Group, Page, Camera, Markers, Battle, Include, Imag
 import { alikePairs, describe } from './palette.mjs';
 import { loadCatalogues, translator, flatten, unflatten } from './i18n.mjs';
 import { coverage, packZones } from './coverage.mjs';
-import { terrainPlan, tileKeys, terrainTiles, openZoom } from './terrain.mjs';
+import { terrainPlan, tileKeys, tileKey, terrainTiles, openZoom } from './terrain.mjs';
 import { esc, ordinals, siteContext, storyFiles, siteFiles } from './pages.mjs';
 import { libraryItems, isImage, isBattle, isZone } from './folders.mjs';
 import { world } from './world.mjs';
 import { hash, listDirs, idOf, boxesMeet } from './util.mjs';
 import { zonePairs, describePair } from './zones.mjs';
-import { sha256 } from './image.mjs';
+import { sha256, imageKeys } from './image.mjs';
+import { storyTree, checkStore } from './store.mjs';
 
 // PKG is this package. The content project comes in as the root of each build.
 const PKG = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -33,11 +35,11 @@ const INDEX = fs.readFileSync(path.join(PKG, 'src', 'index.html'), 'utf8').repla
 // a script's version in its URL, so a browser holding the last release's copy fetches the new one
 const version = text => hash(text).slice(0, 10);
 // the shape of the main page card kept in the cache. A card of another shape counts as no cache.
-const CARD_FORMAT = 3;
+const CARD_FORMAT = 5;
 // Cache files are written whole and renamed into place, so a build running at the same time reads the old file or
 // the new one. A file that is missing or does not parse counts as no cache.
 const readCache = file => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
-// Copies an image unless dest already holds it, through a temporary file, so a build running beside reads it whole.
+// Copies an original unless dest already holds it, through a temporary file, so a build running beside reads it whole.
 const copyFresh = (file, dest) => {
   const from = fs.statSync(file), to = fs.existsSync(dest) && fs.statSync(dest);
   if (to && to.size === from.size && to.mtimeMs >= from.mtimeMs) return;
@@ -99,8 +101,13 @@ function project(root, log) {
   const loadYaml = p => { try { return yaml.load(fs.readFileSync(p, 'utf8')) ?? {}; } catch (e) { fail(rel(p), e.message); } };
   const readYaml = (p, schema) => check(schema, loadYaml(p), rel(p));
   const readJson = (p, schema) => { let data; try { data = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { fail(rel(p), e.message); } return check(schema, data, rel(p)); };
-  return { root, content: path.join(root, 'content'), dist: path.join(root, 'dist'), log, rel, loadYaml, readYaml, readJson };
+  // the links of an image's objects, from the site root or absolute. buildPages sets them for its assets mode.
+  const imageLinks = ({ keys }) => ({ original: `assets/${keys.original}`, large: `assets/${keys.large}`, small: `assets/${keys.small}` });
+  return { root, content: path.join(root, 'content'), dist: path.join(root, 'dist'), log, rel, loadYaml, readYaml, readJson, imageLinks };
 }
+// a link from the site root as a story page uses it, below its story folder
+const fromStory = u => /^https?:/.test(u) ? u : `../${u}`;
+const IMAGE_FILE = /\.(jpe?g|png|webp|gif|svg)$/i;
 
 const LAND_SLOTS = 8;
 // CSS for every theme: tokens on :root[data-palette=id], light and dark; the default theme also on bare :root
@@ -193,7 +200,7 @@ function readContent(p, storyDir, onProblem = null) {
   }
   const storyFamily = f => story.families[f] ? f : aliasOf[f] ?? null;
 
-  const zones = {}, routes = {}, markers = {}, battles = {}, images = {}, imageFiles = {}, definedIn = {};
+  const zones = {}, routes = {}, markers = {}, battles = {}, images = {}, definedIn = {};
   const define = (table, id, value, file, kind, dir) => { if (table[id]) fail(file, `${kind} "${id}" is defined twice`); table[id] = value; definedIn[`${kind} ${id}`] = dir; };
   const icons = {}, icon = (name, at) => icons[name] ??= iconSvg(name, at);
   for (const n of ['swords', 'x', 'external-link', 'chevron-left', 'chevron-right', 'list', 'info', 'settings']) icon(n, where);
@@ -223,21 +230,23 @@ function readContent(p, storyDir, onProblem = null) {
   const storyScope = { battle: null, T, defaultLang, families: story.families, ns: id => id, fam: f => f, pageId: id => id, maxZoom: story.max_zoom,
     imageDirs: [storyImages, commonImages], texts, firstImages };
 
-  // --- image folders: <id>/image.<ext> with image.yaml, read when a text, marker or card first names one ---
-  const folderImages = {}, sharedImageIds = new Set();
-  // an image any story can show goes to dist/images/, once for the whole site, so its src leaves the story folder
-  const imageSrc = (id, ext, shared) => `${shared ? '../' : ''}images/${id}${ext}`;
+  // --- image folders: <id>/image.yaml, and the original where this machine has it, read when a text, marker or card
+  // first names one. Its objects are in the asset store, or with --local-assets the original is copied to dist/assets/.
+  const folderImages = {};
   const loadImageFolder = (dir, id) => {
     if (folderImages[id]) return id;
     const meta = path.join(dir, 'image.yaml'), files = fs.readdirSync(dir).filter(f => /^image\.\w+$/.test(f) && f !== 'image.yaml');
     if (!exists(meta)) fail(rel(dir), 'image.yaml is missing');
-    if (files.length !== 1) fail(rel(dir), files.length ? `keep one image file of ${files.join(', ')}` : 'add the image file, image.jpg, image.png or image.svg');
-    const m = readYaml(meta, ImageFolder), shared = imageLib(commonImages).get(id) === dir;
-    if (shared) sharedImageIds.add(id);
+    if (files.length > 1) fail(rel(dir), `keep one image file of ${files.join(', ')}`);
+    const m = readYaml(meta, ImageFolder);
+    if (files.length && files[0] !== m.file) fail(rel(meta), `file names ${m.file} and the folder holds ${files[0]}, harita rehash writes the file it holds`);
     const t = translator({ langs, defaultLang: m.default_language, catalogues: loadCatalogues(path.join(dir, 'i18n'), langs, p.loadYaml), where: rel(meta), fail });
-    define(images, id, { id, src: imageSrc(id, path.extname(files[0]), shared), caption: t.tr(m.caption, 'image.caption'), credit: m.credit ? t.tr(m.credit, 'image.credit', { shared: true }) : emptyText(langs) }, rel(meta), 'image', dir);
-    imageFiles[id] = path.join(dir, files[0]);
-    folderImages[id] = { id, dir: rel(dir), meta: rel(meta), file: path.join(dir, files[0]), sha256: m.sha256 ?? null, defaultLang: m.default_language, translator: t };
+    const keys = imageKeys(id, m), file = files.length ? path.join(dir, files[0]) : null;
+    const links = p.imageLinks({ keys, file, url: m.url ?? null, at: rel(dir) });
+    define(images, id, { id, src: fromStory(links.large), thumb: fromStory(links.small), caption: t.tr(m.caption, 'image.caption'), credit: m.credit ? t.tr(m.credit, 'image.credit', { shared: true }) : emptyText(langs) }, rel(meta), 'image', dir);
+    // social sites read no SVG, so og:image takes the 1280 px WebP of one
+    const og = path.extname(m.file) === '.svg' ? links.large : links.original;
+    folderImages[id] = { id, dir: rel(dir), meta: rel(meta), file, url: m.url ?? null, sha256: m.sha256, keys, links: { ...links, og }, defaultLang: m.default_language, translator: t };
     return id;
   };
   // an image a text, marker or card names: the image folder the scope sees by that id
@@ -494,13 +503,10 @@ function readContent(p, storyDir, onProblem = null) {
   const shownRoutes = new Set(pages.flatMap(pg => pg.routes)), shownMarkers = new Set(pages.flatMap(pg => pg.markers));
   const shownImages = new Set([...pages.flatMap(pg => [...langs.flatMap(l => [...(texts[pg.id]?.[l] ?? '').matchAll(/^@image\s+(\S+)\s*$/gm)].map(m => m[1])), ...(pg.battle ? battles[pg.battle]?.images ?? [] : [])]),
     ...[...shownMarkers].map(m => markers[m]?.image).filter(Boolean), ...(coverImage ? [coverImage] : [])]);
-  for (const [table, shown] of [[routes, shownRoutes], [markers, shownMarkers], [images, shownImages], [imageFiles, shownImages]]) for (const id of Object.keys(table)) if (!shown.has(id)) delete table[id];
-  // --strict holds each image it ships to the sha256 its image.yaml records, which harita image looks images up by
+  for (const [table, shown] of [[routes, shownRoutes], [markers, shownMarkers], [images, shownImages]]) for (const id of Object.keys(table)) if (!shown.has(id)) delete table[id];
+  // --strict holds each original on this machine to the sha256 its image.yaml records, which names its objects
   const shipped = Object.values(folderImages).filter(f => shownImages.has(f.id));
-  if (p.strict) for (const f of shipped) {
-    if (!f.sha256) fail(f.meta, 'no sha256, harita rehash writes it');
-    if (f.sha256 !== sha256(f.file)) fail(f.meta, `${path.basename(f.file)} changed after its sha256 was written, harita rehash writes the new one`);
-  }
+  if (p.strict) for (const f of shipped) if (f.file && f.sha256 !== sha256(f.file)) fail(f.meta, `${path.basename(f.file)} changed after its sha256 was written, harita rehash writes the new one`);
   for (let i = 1; i < pages.length; i++) attempt(path.join(root, pages[i].dir), () => {
     if (pages.find((q, j) => j < i && q.id === pages[i].id)) fail(where, `two pages share the id "${pages[i].id}"`);
     const prev = pages.slice(0, i).reverse().find(q => q.when);
@@ -509,14 +515,24 @@ function readContent(p, storyDir, onProblem = null) {
     const moved = pages[i].include !== prev.include ? pages[i].include ?? prev.include : null;
     fail(where, `${pages[i].dir} starts ${pages[i].when.from}, before ${prev.dir} which starts ${prev.when.from}; ${moved ? `renumber ${moved} to move the battle` : 'fix the folder numbers or the when fields'}`);
   });
-  return { story, langs, defaultLang, T, entries, translations: report, tree, zones, routes, markers, battles, images, imageFiles, icons, pages, texts, firstImages, families, warnings, battleList,
-    imageFolders: Object.values(folderImages), shippedImages: shipped, sharedImageIds, zoneFolders: Object.values(zoneFolders), coverImage };
+  return { story, langs, defaultLang, T, entries, translations: report, tree, zones, routes, markers, battles, images, icons, pages, texts, firstImages, families, warnings, battleList,
+    imageFolders: Object.values(folderImages), shippedImages: shipped, zoneFolders: Object.values(zoneFolders), coverImage };
+}
+
+// The objects a story links to: its images with their keys and where their originals are, its elevation tiles as
+// "z/x/y", and the hash tree of both, under the story's folder name.
+function storyObjects(name, { story, pages, shippedImages }) {
+  const plan = terrainPlan(story.extent, pages.map(pg => ({ bbox: pg.bbox, maxZoom: pg.maxZoom })));
+  const images = shippedImages.map(f => ({ id: f.id, dir: f.dir.split(path.sep).join('/'), keys: f.keys, file: f.file, url: f.url, sha256: f.sha256 }));
+  const tiles = tileKeys([plan]);
+  return { plan, images, tiles, tree: storyTree(name, images, tiles) };
 }
 
 function buildStory(p, storyDir, site) {
   const { log, root } = p;
   const where = p.rel(storyDir);
-  const { story, langs, defaultLang, T, entries, translations, tree, zones: rawZones, routes, markers, battles, images, imageFiles, icons, pages, texts, firstImages, families, warnings, battleList, imageFolders, shippedImages, sharedImageIds, zoneFolders, coverImage } = readContent(p, storyDir);
+  const content = readContent(p, storyDir);
+  const { story, langs, defaultLang, T, entries, translations, tree, zones: rawZones, routes, markers, battles, images, icons, pages, texts, firstImages, families, warnings, battleList, imageFolders, shippedImages, zoneFolders, coverImage } = content;
   for (const w of warnings) log(`  warning: ${w}`);
   const ui = uiFor(langs, root);
   const { tr: siteT } = translator({ langs, defaultLang: site.default_language ?? defaultLang, catalogues: loadCatalogues(path.join(root, 'i18n'), langs, p.loadYaml), where: 'i18n', fail });
@@ -525,13 +541,14 @@ function buildStory(p, storyDir, site) {
   // and a page that went leaves no file behind
   const final = path.join(p.dist, story.id), out = path.join(p.dist, `.${story.id}.next`);
   fs.rmSync(out, { recursive: true, force: true });
-  fs.mkdirSync(path.join(out, 'images'), { recursive: true });
-  const sharedImages = [];
-  for (const [id, file] of Object.entries(imageFiles)) {
-    const src = images[id].src, shared = sharedImageIds.has(id);
-    if (shared) sharedImages.push(src.slice(3));
-    copyFresh(file, shared ? path.join(p.dist, src.slice(3)) : path.join(out, src));
+  fs.mkdirSync(out, { recursive: true });
+  // with --local-assets each original here is copied to dist/assets/<key>, once for every story that shows it
+  const localKeys = [];
+  if (p.local) for (const f of shippedImages.filter(f => f.file)) {
+    copyFresh(f.file, path.join(p.dist, 'assets', f.keys.original));
+    localKeys.push(f.keys.original);
   }
+  const objects = storyObjects(path.basename(storyDir), content);
 
   // --- borders and land ---
   // borders are cut to the extent plus a margin, so a country with a long coastline elsewhere stays out of the bundle
@@ -614,9 +631,16 @@ function buildStory(p, storyDir, site) {
 
   // --- the cover on the site index, an image the story can show ---
   const cover = coverImage ? images[coverImage].src : null;
+  const coverLinks = coverImage ? shippedImages.find(f => f.id === coverImage).links : null;
+  // the paths harita 0.4 served each image at, from the site root, to its original: dist/redirects.json
+  const redirects = {};
+  for (const f of shippedImages) {
+    const ext = path.extname(f.keys.original), to = /^[a-z]+:/i.test(f.links.original) ? f.links.original : '/' + f.links.original;
+    redirects[`/images/${f.id}${ext}`] = to; redirects[`/${story.id}/images/${f.id}${ext}`] = to;
+  }
 
-  // --- elevation: the tiles this story needs; build() cuts them into dist/terrain, shared by every story ---
-  const terrain = { tiles: '../terrain/{z}/{x}/{y}.png', ...terrainPlan(story.extent, pages.map(pg => ({ bbox: pg.bbox, maxZoom: pg.maxZoom }))) };
+  // --- elevation: the tiles this story needs, in the store or with --local-assets copied to dist/assets/ ---
+  const terrain = { tiles: p.tileLink(tileKey('{z}/{x}/{y}')), ...objects.plan };
 
   // span is story.span, else the years from the pages' when fields, else the first page's date
   const dated = pages.filter(p => p.when);
@@ -642,7 +666,8 @@ function buildStory(p, storyDir, site) {
     .replace('/*__THEMES_CSS__*/', () => themeCss(site.themes, bundle.defaultTheme));
   const storyJs = `const BUNDLE = ${JSON.stringify(bundle)};\n`;
   writeFile(path.join(out, 'story.js'), storyJs);
-  const files = storyFiles({ shell, bundle, texts, firstImages, site: site.context, versions: { story: version(storyJs), app: version(APP_JS) } });
+  const links = Object.fromEntries(shippedImages.map(f => [f.id, f.links]));
+  const files = storyFiles({ shell, bundle, texts, firstImages, links, coverImage, site: site.context, versions: { story: version(storyJs), app: version(APP_JS) } });
   for (const [f, text] of Object.entries(files)) writeFile(path.join(out, f), text);
   log(`  wrote dist/${story.id}/ (story.js ${(Buffer.byteLength(storyJs) / 1e6).toFixed(1)} MB, ${pages.length} pages in ${langs.join('/')})`);
 
@@ -673,7 +698,8 @@ function buildStory(p, storyDir, site) {
   // harita i18n writes the catalogues of each battle, image and zone folder in that folder
   const folderI18n = Object.fromEntries([...battleList.map(b => [b.dir, { kind: 'battle', ...b }]), ...imageFolders.map(f => [f.dir, { kind: 'image', ...f }]), ...zoneFolders.map(f => [f.dir, { kind: 'zone', ...f }])]
     .map(([dir, f]) => [dir, { kind: f.kind, id: f.id, defaultLang: f.defaultLang, langs, entries: [...f.translator.entries.values()] }]));
-  return { format: CARD_FORMAT, id: story.id, title: bundle.title, summary, span, languages: langs, defaultLanguage: defaultLang, pages: pages.length, cover, i18n: [...entries.values()], terrain, folderI18n, sharedImages };
+  return { format: CARD_FORMAT, id: story.id, title: bundle.title, summary, span, languages: langs, defaultLanguage: defaultLang, pages: pages.length,
+    cover: coverLinks?.large ?? null, coverOg: coverLinks?.og ?? null, i18n: [...entries.values()], terrain, folderI18n, localKeys, redirects, tree: objects.tree };
 }
 
 // The story folders under content/. content/shared/ holds the battles, images and zones that stories share.
@@ -693,7 +719,7 @@ function buildIndex(p, cards, site) {
   const data = {
     title: T(site.title, 'site.title'), intro: site.intro ? T(site.intro, 'site.intro') : {},
     languages: langs, defaultLanguage: defaultLang, ui, repository: site.repository ?? null, icons: { settings: iconSvg('settings', 'site.yaml') },
-    stories: order.map(id => { const { i18n, terrain, folderI18n, sharedImages, ...card } = cards.find(c => c.id === id); return card; }),
+    stories: order.map(id => { const { i18n, terrain, folderI18n, localKeys, redirects, tree, coverOg, ...card } = cards.find(c => c.id === id); return card; }),
     themes: themeList(site.themes, ui, langs), defaultTheme: site.theme,
   };
   for (const [lang, r] of Object.entries(report())) {
@@ -704,7 +730,8 @@ function buildIndex(p, cards, site) {
   const css = themeCss(site.themes, site.theme);
   // the 404 page speaks every language a site or story page does
   const notFoundUi = uiFor([...new Set([...langs, ...cards.flatMap(c => c.languages)])], p.root);
-  const files = siteFiles({ shell: INDEX.replace('/*__THEMES_CSS__*/', () => css), data, site: site.context, common: COMMON, themeCss: css, ui: notFoundUi });
+  const image = order.map(id => cards.find(c => c.id === id).coverOg).find(Boolean) ?? null;
+  const files = siteFiles({ shell: INDEX.replace('/*__THEMES_CSS__*/', () => css), data, image, site: site.context, common: COMMON, themeCss: css, ui: notFoundUi });
   for (const [f, text] of Object.entries(files)) writeFile(path.join(p.dist, f), text);
   p.log(`wrote dist/index.html (${data.stories.length} stories)`);
 }
@@ -736,24 +763,62 @@ export function checkStory({ root = process.cwd(), story, pages = [], log = cons
   return problems;
 }
 
+// The image files git tracks under content/, which belong in the asset store. A folder outside git has none.
+function trackedImages(root) {
+  try { return execFileSync('git', ['ls-files', '-z', '--', 'content'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\0').filter(f => IMAGE_FILE.test(f)); }
+  catch { return []; }
+}
+
+// site.yaml with the built-in themes and the defaults that stand in for what it leaves out
+function readSite(p) {
+  const siteFile = path.join(p.root, 'site.yaml');
+  const siteMeta = exists(siteFile) ? p.readYaml(siteFile, Site) : {};
+  const builtIn = check(Themes, p.loadYaml(path.join(PKG, 'src', 'themes.yaml')), 'src/themes.yaml');
+  return { ...siteMeta, title: siteMeta.title ?? path.basename(p.root), theme: siteMeta.theme ?? 'cool', themes: { ...builtIn, ...(siteMeta.themes ?? {}) } };
+}
+
+// The objects each story links to and its hash tree, read as the build reads the stories, with the store of
+// site.yaml. story limits it to that story folder. harita upload puts these objects in the store.
+export function storyAssets({ root = process.cwd(), story = null, log = console.log } = {}) {
+  const p = project(root, log), stories = storyFolders(p);
+  if (!stories.length) fail('content/', 'no story.yaml found, run this from a content project');
+  if (story && !stories.includes(story)) fail('content/', `"${story}" is not a story folder, the stories are ${stories.join(', ')}`);
+  const { assets } = readSite(p);
+  if (!assets) fail('site.yaml', 'add an assets block with the url, bucket and endpoint of the store for the images and elevation tiles');
+  return { assets, stories: (story ? [story] : stories).map(s => ({ story: s, ...storyObjects(s, readContent(p, path.join(p.content, s))) })) };
+}
+
 // Every story under root/content into root/dist, without the elevation tiles. harita i18n reads its strings.
 // only names story folders to build; the others keep their last build, and their main page cards come from the cache.
 // story builds that one story folder into a site of its own, its main page listing it alone. out replaces dist/.
-export function buildPages({ root = process.cwd(), log = console.log, strict = false, cache = path.join(root, '.cache', 'harita'), only = null, story = null, out = null } = {}) {
+// Pages link the images and tiles in the store of site.yaml's assets, or with localAssets copies in dist/assets/.
+export function buildPages({ root = process.cwd(), log = console.log, strict = false, cache = path.join(root, '.cache', 'harita'), only = null, story = null, out = null, localAssets = false } = {}) {
   const p = project(root, log);
-  p.strict = strict; p.cache = cache;
+  p.strict = strict; p.cache = cache; p.local = localAssets;
   if (out) p.dist = path.resolve(root, out);
   const stories = storyFolders(p);
   if (!stories.length) fail('content/', 'no story.yaml found, run this from a content project');
   for (const s of [...(only ?? []), ...(story ? [story] : [])]) if (!stories.includes(s)) fail('content/', `"${s}" is not a story folder, the stories are ${stories.join(', ')}`);
+  if (strict) {
+    const tracked = trackedImages(root);
+    if (tracked.length) fail('content/', `git tracks ${tracked.length} image file${tracked.length === 1 ? '' : 's'}, which belong in the asset store: ${tracked.slice(0, 5).join(', ')}${tracked.length > 5 ? ', …' : ''}. Add the .gitignore lines for image files and git rm --cached them`);
+  }
   const cardFile = s => path.join(cache, 'stories', s, 'card.json');
-  // a card from the last build, while that build's page is still in dist/
-  const lastCard = s => { const c = readCache(cardFile(s)); return c?.format === CARD_FORMAT && exists(path.join(p.dist, c.id, 'index.html')) ? c : null; };
-  const siteFile = path.join(root, 'site.yaml');
-  const siteMeta = exists(siteFile) ? p.readYaml(siteFile, Site) : {};
-  const builtIn = check(Themes, p.loadYaml(path.join(PKG, 'src', 'themes.yaml')), 'src/themes.yaml');
-  const site = { ...siteMeta, title: siteMeta.title ?? path.basename(root), theme: siteMeta.theme ?? 'cool', themes: { ...builtIn, ...(siteMeta.themes ?? {}) } };
+  // a card from the last build of the same assets mode, while that build's page is still in dist/
+  const lastCard = s => { const c = readCache(cardFile(s)); return c?.format === CARD_FORMAT && c.local === localAssets && exists(path.join(p.dist, c.id, 'index.html')) ? c : null; };
+  const site = readSite(p);
   if (!site.themes[site.theme]) fail('site.yaml', `unknown theme "${site.theme}"`);
+  const store = site.assets?.url ?? null;
+  if (!store && !localAssets) fail('site.yaml', 'add an assets block with the url, bucket and endpoint of the store for the images and elevation tiles, or build with --local-assets to show the files on this machine');
+  // an image links its objects in the store, or with --local-assets its original: the copy in dist/assets/, else its
+  // url, else the one in the store
+  p.imageLinks = ({ keys, file, url, at }) => {
+    if (!localAssets) return { original: store + keys.original, large: store + keys.large, small: store + keys.small };
+    const one = file ? `assets/${keys.original}` : url ?? (store ? store + keys.original
+      : fail(at, 'the original is not on this machine and image.yaml has no url, add the original to the folder or give it a url'));
+    return { original: one, large: one, small: one };
+  };
+  p.tileLink = key => store && !localAssets ? store + key : `../assets/${key}`;
   // story ids and language codes both name folders at the top of dist/
   // building one story, another story's story.yaml that does not read yet is left out of the checks
   const meta = s => [s, p.readYaml(path.join(p.content, s, 'story.yaml'), Story)];
@@ -762,8 +827,8 @@ export function buildPages({ root = process.cwd(), log = console.log, strict = f
   site.defaultLang = site.default_language ?? site.langs[0];
   const codes = new Set([...site.langs, ...metas.flatMap(([, m]) => m.languages)]);
   for (const [s, m] of metas) if (codes.has(m.id)) fail(`content/${s}/story.yaml`, `the story id "${m.id}" is also a language code, and both would be the folder dist/${m.id}/, so give the story another id`);
-  // dist/images/ and dist/terrain/ hold what every story shares
-  for (const [s, m] of metas) if (['images', 'terrain'].includes(m.id)) fail(`content/${s}/story.yaml`, `the story id "${m.id}" names the folder dist/${m.id}/ that holds what every story shares, so give the story another id`);
+  // dist/assets/ holds the images and tiles of a --local-assets build
+  for (const [s, m] of metas) if (m.id === 'assets') fail(`content/${s}/story.yaml`, `the story id "${m.id}" names the folder dist/${m.id}/ that holds the images and tiles of a --local-assets build, so give the story another id`);
   site.context = siteContext({ url: site.url, languages: site.langs, defaultLanguage: site.defaultLang });
   if (story) site.stories = [metas.find(([s]) => s === story)[1].id];
   // every build compares the zones: a pair that looks alike is a warning, and with --strict a copy stops the build
@@ -791,15 +856,21 @@ export function buildPages({ root = process.cwd(), log = console.log, strict = f
     if (kept) { cards.push(kept); continue; }
     log(`story ${s}`);
     const card = buildStory(p, path.join(p.content, s), site);
-    const { i18n, terrain, folderI18n, ...saved } = card;
-    writeCache(cardFile(s), saved);
+    const { i18n, terrain, folderI18n, tree, ...saved } = card;
+    writeCache(cardFile(s), { ...saved, local: localAssets });
     cards.push(card);
   }
   buildIndex(p, cards, site);
-  // dist/images/ keeps the shared images a story in dist/ shows: the built ones, and the others from their cached cards
+  // the Worker and harita dev redirect the image paths of harita 0.4 to the originals, see routes.mjs
+  const redirects = Object.fromEntries(cards.flatMap(c => Object.entries(c.redirects ?? {})).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+  writeFile(path.join(p.dist, 'redirects.json'), JSON.stringify(redirects, null, 1) + '\n');
+  // dist/ holds no objects of the store, and dist/images/ and dist/terrain/ of harita 0.4 go unless a story is named so
+  const taken = new Set(metas.map(([, m]) => m.id));
+  for (const d of [...(localAssets ? [] : ['assets']), 'images', 'terrain']) if (!taken.has(d)) fs.rmSync(path.join(p.dist, d), { recursive: true, force: true });
+  // dist/assets/images/ keeps the originals a story in dist/ shows: the built ones, and the others from their cached cards
   const others = story ? stories.filter(s => s !== story).map(lastCard).filter(Boolean) : [];
-  const imagesDir = path.join(p.dist, 'images'), shown = new Set([...cards, ...others].flatMap(c => c.sharedImages ?? []));
-  for (const f of exists(imagesDir) ? fs.readdirSync(imagesDir, { recursive: true }).sort().reverse() : []) {
+  const imagesDir = path.join(p.dist, 'assets', 'images'), shown = new Set([...cards, ...others].flatMap(c => c.localKeys ?? []));
+  for (const f of localAssets && exists(imagesDir) ? fs.readdirSync(imagesDir, { recursive: true }).sort().reverse() : []) {
     const full = path.join(imagesDir, f);
     if (fs.statSync(full).isDirectory()) { if (!fs.readdirSync(full).length) fs.rmdirSync(full); }
     else if (!shown.has(`images/${f.split(path.sep).join('/')}`)) fs.rmSync(full);
@@ -813,15 +884,18 @@ export function buildPages({ root = process.cwd(), log = console.log, strict = f
     for (const e of b.entries) if (!into.entries.has(e.key)) into.entries.set(e.key, e);
   }
   const folders = Object.fromEntries(Object.entries(merged).map(([dir, f]) => [dir, { ...f, langs: [...f.langs], entries: [...f.entries.values()] }]));
-  return { dist: p.dist, themes: site.themes, stories: cards.map(({ i18n, terrain, folderI18n, sharedImages, ...card }) => card), i18n: { stories: Object.fromEntries(built.map(c => [c.id, c.i18n])), site: p.siteEntries, folders },
-    terrain: tileKeys(built.map(c => c.terrain)) };
+  return { dist: p.dist, themes: site.themes, stories: cards.map(({ i18n, terrain, folderI18n, localKeys, redirects, tree, coverOg, local, ...card }) => card), i18n: { stories: Object.fromEntries(built.map(c => [c.id, c.i18n])), site: p.siteEntries, folders },
+    terrain: tileKeys(built.map(c => c.terrain)), trees: built.map(c => c.tree), assets: site.assets ?? null };
 }
 
-// Build every story under root/content into root/dist, with the elevation tiles. Returns the dist folder and one
-// card per story. Tiles and each story's cleaned zones are kept in cache, so only the first build of an area
-// downloads tiles, and a build that leaves a story's zones as they were skips their geometry.
-export async function build({ root = process.cwd(), log = console.log, strict = false, cache = path.join(root, '.cache', 'harita'), elevation, only = null, story = null, out = null } = {}) {
-  const { terrain, ...r } = buildPages({ root, log, strict, cache, only, story, out });
-  await terrainTiles({ keys: terrain, cache, out: path.join(r.dist, 'terrain'), elevation, log });
+// Build every story under root/content into root/dist. Returns the dist folder and one card per story. Pages link
+// the images and tiles in the asset store, and with strict the store must hold each of them. With localAssets the
+// originals here and the elevation tiles are copied to dist/assets/. Tiles and each story's cleaned zones are kept in
+// cache, so only the first build of an area downloads tiles, and a build that leaves a story's zones as they were
+// skips their geometry.
+export async function build({ root = process.cwd(), log = console.log, strict = false, cache = path.join(root, '.cache', 'harita'), elevation, only = null, story = null, out = null, localAssets = false } = {}) {
+  const { terrain, trees, assets, ...r } = buildPages({ root, log, strict, cache, only, story, out, localAssets });
+  if (localAssets) await terrainTiles({ keys: terrain, cache, out: path.join(r.dist, 'assets'), elevation, log });
+  else if (strict) await checkStore({ url: assets.url, trees, log });
   return r;
 }

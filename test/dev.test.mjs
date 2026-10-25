@@ -20,7 +20,7 @@ test('dev rebuilds the story that changed, and every story when site.yaml change
   fs.writeFileSync(path.join(root, 'content/second-story/story.yaml'), read(root, 'content/second-story/story.yaml').replace('id: settlement-of-iceland', 'id: second-story'));
   // fill the elevation cache with a stand-in tile first, so the builds dev starts stay offline
   const tile = PNG.sync.write(new PNG({ width: 256, height: 256 }));
-  await build({ root, log: () => {}, elevation: async () => tile });
+  await build({ root, log: () => {}, elevation: async () => tile, localAssets: true });
 
   let ok = 0;
   const server = dev({ root, port: 0, log: l => { if (l.startsWith('build ok')) ok++; } });
@@ -48,6 +48,10 @@ test('dev rebuilds the story that changed, and every story when site.yaml change
     assert.equal(missing.status, 404);
     assert.ok((await missing.text()).includes('There is no page at this address.'));
     assert.match((await at('/harita.js')).headers.get('content-type'), /^text\/javascript/);
+    // a path in redirects.json goes to its target, as the Worker sends it
+    fs.writeFileSync(path.join(root, 'dist/redirects.json'), JSON.stringify({ '/images/farm-abc123.jpg': 'https://assets.example.org/images/0/farm-abc123.jpg' }));
+    const old = await at('/images/farm-abc123.jpg');
+    assert.deepEqual([old.status, old.headers.get('location')], [301, 'https://assets.example.org/images/0/farm-abc123.jpg']);
   } finally {
     server.close();
   }

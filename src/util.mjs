@@ -8,3 +8,5 @@ export const listDirs = p => fs.existsSync(p) ? fs.readdirSync(p).filter(d => fs
 // a folder's id: its name without the number that orders it
 export const idOf = name => name.replace(/^\d+-/, '');
 export const boxesMeet = (a, b) => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
+export const mb = bytes => `${(bytes / 1e6).toFixed(1)} MB`;
+export const plural = (n, word) => `${n.toLocaleString('en')} ${word}${n === 1 ? '' : 's'}`;

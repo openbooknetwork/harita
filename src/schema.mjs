@@ -29,6 +29,9 @@ export const Site = z.object({
   url: z.string().url().optional(), // where the site is published, for canonical links, sitemaps and llms.txt
   repository: z.string().url().optional(), // the content repository: a Contribute link on the main page, a source link per story
   branch: z.string().default('main'),
+  // the object store that holds the images and elevation tiles: url serves them, bucket and endpoint take uploads
+  assets: z.object({ url: z.string().url().refine(u => u.endsWith('/'), 'ends in /'), bucket: z.string().min(1), endpoint: z.string().url() }).strict().optional(),
+  pages: z.object({ bucket: z.string().min(1) }).strict().optional(), // the bucket harita deploy writes dist/ to, in the account of assets.endpoint
 }).strict();
 
 export const Story = z.object({
@@ -54,10 +57,13 @@ export const Story = z.object({
 
 export const Group = z.object({ title: Translatable.optional() }).strict();
 
-// image.yaml in an image folder, content/shared/images/<id>/ or content/<story>/shared/images/<id>/, beside image.<ext>
-// source: the page the file came from, such as its Commons file page. sha256: the file's, checked by --strict
+// image.yaml in an image folder, content/shared/images/<id>/ or content/<story>/shared/images/<id>/. source: the page
+// the original came from, such as its Commons file page. url: where the original downloads from. file and sha256: the
+// original's name in the folder and its hash, which name its objects in the asset store.
 export const ImageFolder = z.object({ caption: Translatable, credit: Translatable.optional(), default_language: Lang.default('en'),
-  source: z.string().url().optional(), sha256: z.string().regex(/^[0-9a-f]{64}$/, '64 hex digits, harita rehash writes it').optional() }).strict();
+  source: z.string().url().optional(), url: z.string().url().optional(),
+  file: z.string().regex(/^image\.(jpe?g|png|webp|svg|gif)$/, 'image.<ext>, the original in this folder, harita rehash writes it'),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/, '64 hex digits, harita rehash writes it') }).strict();
 
 // A tilted 3D view over the terrain: pitch from straight down, bearing clockwise from north, heights times exaggeration.
 export const Camera = z.object({ pitch: z.number().min(10).max(60).default(50), bearing: z.number().min(-180).max(180).default(0), exaggeration: z.number().min(0.5).max(5).default(2) }).strict();

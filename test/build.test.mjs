@@ -30,7 +30,7 @@ const TILE = terrarium(x => x * 4 - 200);
 const CACHE = fs.mkdtempSync(path.join(os.tmpdir(), 'harita-cache-'));
 let fetched = 0;
 const elevation = async () => { fetched++; return TILE; };
-const make = (root, opts = {}) => build({ root, log: quiet, cache: CACHE, elevation, ...opts });
+const make = (root, opts = {}) => build({ root, log: quiet, cache: CACHE, elevation, localAssets: true, ...opts });
 const bundleOf = (root, id = 'settlement-of-iceland') => { const js = fs.readFileSync(path.join(root, 'dist', id, 'story.js'), 'utf8'); return JSON.parse(js.slice('const BUNDLE = '.length, js.lastIndexOf(';'))); };
 // a zone's outline, decoded from the story's zone topology
 const zoneGeometry = (B, id) => tc.feature(B.zoneShapes, B.zoneShapes.objects.zones.geometries.find(g => g.id === id)).geometry;
@@ -44,6 +44,12 @@ function addLanguage(root, lang, story = STORY) {
 }
 // every string of the catalogues filled in
 const fillCatalogue = (root, file) => fs.writeFileSync(path.join(root, file), fs.readFileSync(path.join(root, file), 'utf8').replace(/: ""$/gm, ': "x"'));
+// the key of an image's original in the store, which a --local-assets build copies to dist/assets/<key>
+function originalKey(root, id) {
+  const meta = fs.readdirSync(path.join(root, 'content'), { recursive: true }).find(f => f.endsWith(path.join(id, 'image.yaml')));
+  const text = fs.readFileSync(path.join(root, 'content', meta), 'utf8');
+  return `images/${text.match(/^sha256: (\w+)$/m)[1]}/${id}${path.extname(text.match(/^file: (\S+)$/m)[1])}`;
+}
 // an svg file whose bytes differ by its text, so harita image sees distinct images
 const svgFile = (root, text) => { const f = path.join(root, `${text}.svg`); fs.writeFileSync(f, `<svg xmlns="http://www.w3.org/2000/svg"><title>${text}</title></svg>`); return f; };
 // a battle of the story's own with a card and no pages
@@ -65,8 +71,8 @@ test('build writes the site index and one page per story', async () => {
   assert.match(page, /"labels":\[\{"type":"Feature","properties":\{"en":"Ísland","rank":-\d+\},"geometry":\{"type":"Point","coordinates":\[-1\d\.\d+,6[45]\.\d+\]/);
   assert.ok(page.includes('"emblem":{"type":"FeatureCollection","features":[{"type":"Feature"'));
   assert.ok(page.includes('"properties":{"color":"#c62828"}'));
-  assert.ok(fs.existsSync(path.join(root, 'dist/terrain/0/0/0.png')));
-  assert.ok(page.includes('"tiles":"../terrain/{z}/{x}/{y}.png"'));
+  assert.ok(fs.existsSync(path.join(root, 'dist/assets/terrain/v1/0/0/0.png')));
+  assert.ok(page.includes('"tiles":"../assets/terrain/v1/{z}/{x}/{y}.png"'));
   assert.ok(Object.values(bundleOf(root).zones).every(z => Number.isInteger(z.area) && z.area > 0), 'each zone ships its area in km2');
   const index = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8');
   assert.ok(index.includes('const SITE = {"title":{"en":"Example histories"}'));
@@ -666,7 +672,7 @@ test("a battle the story only names keeps its pages' texts and images out of the
   // a story page with the id the battle's page has in a story that includes it
   fs.cpSync(path.join(root, STORY, 'pages/030-kristnitaka'), path.join(root, STORY, 'pages/040-althing-1012-fight'), { recursive: true });
   append(root, `${STORY}/pages/040-althing-1012-fight/page.yaml`, 'battle: althing-1012');
-  const river = image({ root, file: svgFile(root, 'oxara'), name: 'oxara', caption: 'The river', log: quiet });
+  const river = await image({ root, file: svgFile(root, 'oxara'), name: 'oxara', caption: 'The river', log: quiet });
   append(root, `${BATTLE}/pages/020-fight/text/en.md`, `@image ${river}`);
   await make(root);
   const B = bundleOf(root);
@@ -675,12 +681,12 @@ test("a battle the story only names keeps its pages' texts and images out of the
   assert.ok(!B.images[river] && !fs.existsSync(path.join(root, `dist/images/${river}.svg`)));
 });
 
-test('harita image writes the caption language of the story it is for', () => {
+test('harita image writes the caption language of the story it is for', async () => {
   const root = copy(), svg = path.join(root, 'picture.svg');
   fs.writeFileSync(svg, '<svg xmlns="http://www.w3.org/2000/svg"/>');
   edit(root, `${STORY}/story.yaml`, 'default_language: en', 'default_language: is');
-  const id = image({ root, file: svg, name: 'farm', caption: 'Bærinn', story: 'settlement-of-iceland', log: quiet });
-  assert.match(fs.readFileSync(path.join(root, STORY, `shared/images/${id}/image.yaml`), 'utf8'), /^caption: Bærinn\ndefault_language: is\nsha256: [0-9a-f]{64}\n$/);
+  const id = await image({ root, file: svg, name: 'farm', caption: 'Bærinn', story: 'settlement-of-iceland', log: quiet });
+  assert.match(fs.readFileSync(path.join(root, STORY, `shared/images/${id}/image.yaml`), 'utf8'), /^caption: Bærinn\ndefault_language: is\nfile: image\.svg\nsha256: [0-9a-f]{64}\n$/);
 });
 
 test('a story page that names a battle shows its card alone, and the catalogue keeps the battle pages', async () => {
@@ -725,30 +731,30 @@ test('a battle colour takes the story family of its id or alias, else its own wi
   assert.ok(read(root, 'settlement-of-iceland/en/landnam/index.html').includes('--z-althing-1012_kin:#2f6a9f;'));
 });
 
-test("a story's own image stays in its folder and a shared battle's goes to dist/images/, in the export and og:image too", async () => {
+test('a --local-assets build copies each original to dist/assets/<key>, which the pages, the export and og:image link', async () => {
   const root = copy();
   append(root, 'site.yaml', 'url: https://example.org/atlas');
-  const own = image({ root, file: svgFile(root, 'farm'), name: 'farm', caption: 'The story picture', story: 'settlement-of-iceland', log: quiet });
-  const plain = image({ root, file: svgFile(root, 'plain'), name: 'plain', caption: 'The battle picture', log: quiet });
+  const own = await image({ root, file: svgFile(root, 'farm'), name: 'farm', caption: 'The story picture', story: 'settlement-of-iceland', log: quiet });
+  const plain = await image({ root, file: svgFile(root, 'plain'), name: 'plain', caption: 'The battle picture', log: quiet });
   append(root, `${STORY}/pages/010-landnam/text/en.md`, `@image ${own}`);
   append(root, `${BATTLE}/pages/010-assembly/text/en.md`, `@image ${plain}`);
   append(root, `${BATTLE}/battle.yaml`, `images: [${plain}]`);
   await make(root);
-  const B = bundleOf(root), site = 'https://example.org/atlas/';
-  assert.deepEqual([B.images[own].src, B.images[plain].src], [`images/${own}.svg`, `../images/${plain}.svg`]);
+  const B = bundleOf(root), site = 'https://example.org/atlas/', [ownKey, plainKey] = [own, plain].map(id => originalKey(root, id));
+  assert.deepEqual([B.images[own].src, B.images[own].thumb, B.images[plain].src], [`../assets/${ownKey}`, `../assets/${ownKey}`, `../assets/${plainKey}`]);
   assert.deepEqual(B.battles['althing-1012'].images, [plain]);
-  for (const f of [`settlement-of-iceland/images/${own}.svg`, `images/${plain}.svg`]) assert.ok(fs.existsSync(path.join(root, 'dist', f)), f);
-  assert.ok(B.pages[3].html.en.includes(`data-img="${plain}"`));
+  for (const key of [ownKey, plainKey]) assert.ok(fs.existsSync(path.join(root, 'dist/assets', key)), key);
+  assert.ok(B.pages[3].html.en.includes(`<img src="../assets/${plainKey}"`) && B.pages[3].html.en.includes(`data-img="${plain}"`));
   const md = read(root, 'settlement-of-iceland/en.md');
-  assert.ok(md.includes(`![The story picture](${site}settlement-of-iceland/images/${own}.svg)`) && md.includes(`![The battle picture](${site}images/${plain}.svg)`));
-  assert.ok(read(root, 'settlement-of-iceland/en/althing-1012-assembly/index.html').includes(`<meta property="og:image" content="${site}images/${plain}.svg">`));
+  assert.ok(md.includes(`![The story picture](${site}assets/${ownKey})`) && md.includes(`![The battle picture](${site}assets/${plainKey})`));
+  assert.ok(read(root, 'settlement-of-iceland/en/althing-1012-assembly/index.html').includes(`<meta property="og:image" content="${site}assets/${plainKey}">`));
 });
 
 test('harita image makes an image folder that texts, markers and battle cards share, and dist/ gets the ones in use', async () => {
   const root = copy();
-  const own = image({ root, file: svgFile(root, 'farm'), name: 'farm', caption: 'The farm', credit: 'A museum', story: 'settlement-of-iceland', log: quiet });
-  const shared = image({ root, file: svgFile(root, 'plain'), name: 'plain', caption: 'The assembly plain', log: quiet });
-  const unused = image({ root, file: svgFile(root, 'unused'), name: 'unused', caption: 'Nobody shows this', log: quiet });
+  const own = await image({ root, file: svgFile(root, 'farm'), name: 'farm', caption: 'The farm', credit: 'A museum', story: 'settlement-of-iceland', log: quiet });
+  const shared = await image({ root, file: svgFile(root, 'plain'), name: 'plain', caption: 'The assembly plain', log: quiet });
+  const unused = await image({ root, file: svgFile(root, 'unused'), name: 'unused', caption: 'Nobody shows this', log: quiet });
   assert.match(own, /^farm-[0-9a-f]{6}$/);
   assert.ok(fs.existsSync(path.join(root, STORY, `shared/images/${own}/image.svg`)) && fs.existsSync(path.join(root, `content/shared/images/${shared}/image.yaml`)));
   append(root, `${STORY}/pages/010-landnam/text/en.md`, `@image ${own}`);
@@ -759,75 +765,80 @@ test('harita image makes an image folder that texts, markers and battle cards sh
   const lines = [];
   await make(root, { log: l => lines.push(l) });
   const B = bundleOf(root);
-  assert.deepEqual(B.images[own], { id: own, src: `images/${own}.svg`, caption: { en: 'The farm', tr: 'The farm' }, credit: { en: 'A museum', tr: 'A museum' } });
+  const [ownKey, sharedKey, unusedKey] = [own, shared, unused].map(id => originalKey(root, id));
+  assert.deepEqual(B.images[own], { id: own, src: `../assets/${ownKey}`, thumb: `../assets/${ownKey}`, caption: { en: 'The farm', tr: 'The farm' }, credit: { en: 'A museum', tr: 'A museum' } });
   assert.equal(B.markers.reykjavik.image, own);
   assert.deepEqual(B.battles['althing-1012'].images, [shared]);
-  assert.ok(fs.existsSync(path.join(root, `dist/settlement-of-iceland/images/${own}.svg`)) && fs.existsSync(path.join(root, `dist/images/${shared}.svg`)));
-  assert.ok(!B.images[unused] && !fs.existsSync(path.join(root, `dist/images/${unused}.svg`)));
+  assert.ok(fs.existsSync(path.join(root, 'dist/assets', ownKey)) && fs.existsSync(path.join(root, 'dist/assets', sharedKey)));
+  assert.ok(!B.images[unused] && !fs.existsSync(path.join(root, 'dist/assets', unusedKey)));
   assert.ok(lines.includes('  image folders tr: 0 of 2 strings translated, 2 missing (harita i18n tr)'));
   i18n({ root, lang: 'tr', log: quiet });
   assert.match(fs.readFileSync(path.join(root, STORY, `shared/images/${own}/i18n/tr.yaml`), 'utf8'), /^# The farm\nimage\.caption: ""$/m);
 });
 
-test('a shared image ships once in dist/images/ for every story that shows it, and goes when none does', async () => {
+test('an original ships once in dist/assets/ for every story that shows it, and goes when none does', async () => {
   const root = copy(), svg = path.join(root, 'picture.svg');
   fs.writeFileSync(svg, '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>');
   fs.cpSync(path.join(root, STORY), path.join(root, 'content/second-story'), { recursive: true });
   edit(root, 'content/second-story/story.yaml', 'id: settlement-of-iceland', 'id: second-story');
-  const id = image({ root, file: svg, name: 'plain', caption: 'The assembly plain', log: quiet });
+  const id = await image({ root, file: svg, name: 'plain', caption: 'The assembly plain', log: quiet });
   for (const s of [STORY, 'content/second-story']) append(root, `${s}/pages/010-landnam/text/en.md`, `@image ${id}`);
   await make(root);
-  const shipped = f => fs.readdirSync(path.join(root, 'dist'), { recursive: true }).filter(x => x.endsWith(f));
-  assert.deepEqual(shipped(`${id}.svg`), [`images/${id}.svg`]);
-  for (const s of ['settlement-of-iceland', 'second-story']) assert.equal(bundleOf(root, s).images[id].src, `../images/${id}.svg`);
+  const key = originalKey(root, id), shipped = () => fs.readdirSync(path.join(root, 'dist'), { recursive: true }).filter(x => x.endsWith('.svg')).map(x => x.split(path.sep).join('/'));
+  assert.deepEqual(shipped(), [`assets/${key}`]);
+  for (const s of ['settlement-of-iceland', 'second-story']) assert.equal(bundleOf(root, s).images[id].src, `../assets/${key}`);
   for (const s of [STORY, 'content/second-story']) edit(root, `${s}/pages/010-landnam/text/en.md`, `@image ${id}`, '');
   await make(root);
-  assert.deepEqual(shipped(`${id}.svg`), []);
+  assert.deepEqual(shipped(), []);
 });
 
-test('harita image finds the image the content holds by its source or its bytes before it makes a folder', () => {
+test('harita image finds the image the content holds by its source or its bytes before it makes a folder', async () => {
   const root = copy(), file = svgFile(root, 'farm'), page = 'https://commons.wikimedia.org/wiki/File:Reykjav%C3%ADk%20farm.jpg';
-  const first = image({ root, file, name: 'farm', caption: 'The farm', source: page, story: 'settlement-of-iceland', log: quiet });
+  const first = await image({ root, file, name: 'farm', caption: 'The farm', source: page, story: 'settlement-of-iceland', log: quiet });
   const meta = fs.readFileSync(path.join(root, STORY, `shared/images/${first}/image.yaml`), 'utf8');
-  assert.match(meta, new RegExp(`^source: ${page.replace(/[.?]/g, '\\$&')}\nsha256: [0-9a-f]{64}\n$`, 'm'));
+  assert.match(meta, new RegExp(`^source: ${page.replace(/[.?]/g, '\\$&')}\nfile: image\\.svg\nsha256: [0-9a-f]{64}\n$`, 'm'));
   // the same Commons page, written as Commons writes it, over another download of it
-  assert.equal(image({ root, file: svgFile(root, 'other'), name: 'farm', caption: 'x', source: 'https://commons.wikimedia.org/wiki/File:Reykjavík_farm.jpg', story: 'settlement-of-iceland', log: quiet }), first);
+  assert.equal(await image({ root, file: svgFile(root, 'other'), name: 'farm', caption: 'x', source: 'https://commons.wikimedia.org/wiki/File:Reykjavík_farm.jpg', story: 'settlement-of-iceland', log: quiet }), first);
   // the same bytes without a source, from a second story: the folder moves where both stories see it
   fs.cpSync(path.join(root, STORY), path.join(root, 'content/second-story'), { recursive: true });
   fs.rmSync(path.join(root, 'content/second-story/shared/images'), { recursive: true });
   edit(root, 'content/second-story/story.yaml', 'id: settlement-of-iceland', 'id: second-story');
   const lines = [];
-  assert.equal(image({ root, file, name: 'farm', caption: 'x', story: 'second-story', log: l => lines.push(l) }), first);
+  assert.equal(await image({ root, file, name: 'farm', caption: 'x', story: 'second-story', log: l => lines.push(l) }), first);
   assert.ok(fs.existsSync(path.join(root, `content/shared/images/${first}/image.svg`)) && !fs.existsSync(path.join(root, STORY, `shared/images/${first}`)));
   assert.deepEqual(lines, [`moved ${STORY}/shared/images/${first}/ to content/shared/images/${first}/, it holds the same file`, `name it as ${first}`]);
   assert.deepEqual(fs.readdirSync(path.join(root, 'content/shared/images')), [first]);
 });
 
-test('a strict build holds each image to its sha256, and harita rehash writes it', async () => {
-  const root = copy(), id = image({ root, file: svgFile(root, 'farm'), name: 'farm', caption: 'The farm', story: 'settlement-of-iceland', log: quiet });
-  const folder = path.join(root, STORY, `shared/images/${id}`);
+test('a strict build holds each original here to its sha256, and harita rehash writes file and sha256 and drops url', async () => {
+  const root = copy(), id = await image({ root, file: svgFile(root, 'farm'), name: 'farm', caption: 'The farm', story: 'settlement-of-iceland', log: quiet });
+  const folder = `${STORY}/shared/images/${id}`;
   append(root, `${STORY}/pages/010-landnam/text/en.md`, `@image ${id}`);
   await make(root, { strict: true });
-  fs.writeFileSync(path.join(folder, 'image.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><title>new</title></svg>');
+  fs.writeFileSync(path.join(root, folder, 'image.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><title>new</title></svg>');
   await assert.rejects(make(root, { strict: true }), new RegExp(`${id}/image\\.yaml: image\\.svg changed after its sha256 was written, harita rehash writes the new one`));
   await make(root);
-  edit(root, `${STORY}/shared/images/${id}/image.yaml`, /^sha256:.*\n/m, '');
-  await assert.rejects(make(root, { strict: true }), /image\.yaml: no sha256, harita rehash writes it/);
-  assert.deepEqual(rehash({ root, log: quiet }), [`${STORY}/shared/images/${id}`]);
+  edit(root, `${folder}/image.yaml`, /^file:.*\n/m, 'url: https://example.org/farm.svg\n');
+  await assert.rejects(make(root), /image\.yaml:\n\s+file: /);
+  assert.deepEqual(rehash({ root, log: quiet }), [folder]);
+  assert.match(fs.readFileSync(path.join(root, folder, 'image.yaml'), 'utf8'), /^caption: The farm\nfile: image\.svg\nsha256: [0-9a-f]{64}\n$/);
   await make(root, { strict: true });
   assert.deepEqual(rehash({ root, log: quiet }), []);
+  edit(root, `${folder}/image.yaml`, 'file: image.svg', 'file: image.png');
+  await assert.rejects(make(root), /image\.yaml: file names image\.png and the folder holds image\.svg, harita rehash writes the file it holds/);
 });
 
 test("a story's cover can name an image, and the image ships once", async () => {
   const root = copy(), svg = path.join(root, 'picture.svg');
   fs.writeFileSync(svg, '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>');
-  const id = image({ root, file: svg, name: 'farm', caption: 'The farm', story: 'settlement-of-iceland', log: quiet });
+  const id = await image({ root, file: svg, name: 'farm', caption: 'The farm', story: 'settlement-of-iceland', log: quiet });
   append(root, `${STORY}/story.yaml`, `cover: ${id}`);
   append(root, 'site.yaml', 'url: https://example.org/atlas');
-  const r = await make(root);
-  assert.equal(r.stories[0].cover, `images/${id}.svg`);
-  assert.ok(fs.existsSync(path.join(root, `dist/settlement-of-iceland/images/${id}.svg`)) && !fs.existsSync(path.join(root, 'dist/settlement-of-iceland/cover.svg')));
-  assert.ok(read(root, 'settlement-of-iceland/en/index.html').includes(`<meta property="og:image" content="https://example.org/atlas/settlement-of-iceland/images/${id}.svg">`));
+  const r = await make(root), key = originalKey(root, id);
+  assert.equal(r.stories[0].cover, `assets/${key}`);
+  assert.ok(read(root, 'index.html').includes(`<div class="cover"><img src="assets/${key}" alt=""></div>`));
+  assert.ok(fs.existsSync(path.join(root, 'dist/assets', key)) && !fs.existsSync(path.join(root, 'dist/settlement-of-iceland/cover.svg')));
+  for (const f of ['settlement-of-iceland/en/index.html', 'index.html']) assert.ok(read(root, f).includes(`<meta property="og:image" content="https://example.org/atlas/assets/${key}">`), f);
   edit(root, `${STORY}/story.yaml`, `cover: ${id}`, 'cover: nowhere-a1b2c3');
   await assert.rejects(make(root), /story\.yaml cover: unknown image "nowhere-a1b2c3"/);
 });
@@ -1077,7 +1088,7 @@ test('a pair kept apart stops warning until either zone is redrawn, and a copy c
 test('battles, images and zones sit in groups of folders at any depth, which only order them', async () => {
   const root = copy(), group = (from, to) => { fs.mkdirSync(path.dirname(path.join(root, to)), { recursive: true }); fs.renameSync(path.join(root, from), path.join(root, to)); };
   group(BATTLE, 'content/shared/battles/iceland/11th-century/althing-1012');
-  const farm = image({ root, file: svgFile(root, 'farm'), name: 'farm', caption: 'The farm', story: 'settlement-of-iceland', log: quiet });
+  const farm = await image({ root, file: svgFile(root, 'farm'), name: 'farm', caption: 'The farm', story: 'settlement-of-iceland', log: quiet });
   group(`${STORY}/shared/images/${farm}`, `${STORY}/shared/images/farms/${farm}`);
   append(root, `${STORY}/pages/010-landnam/text/en.md`, `@image ${farm}`);
   // a story's zone files in a subfolder of zones/, and a shared zone in a group
@@ -1089,9 +1100,9 @@ test('battles, images and zones sit in groups of folders at any depth, which onl
   await make(root);
   const B = bundleOf(root);
   assert.ok(B.pages.some(p => p.id === 'althing-1012-fight') && B.images[farm] && B.zones.island && B.zones['iceland-930']);
-  assert.ok(fs.existsSync(path.join(root, `dist/settlement-of-iceland/images/${farm}.svg`)));
+  assert.ok(fs.existsSync(path.join(root, 'dist/assets', originalKey(root, farm))));
   // harita image and harita zones look in the groups too
-  assert.equal(image({ root, file: svgFile(root, 'farm'), name: 'farm', caption: 'x', story: 'settlement-of-iceland', log: quiet }), farm);
+  assert.equal(await image({ root, file: svgFile(root, 'farm'), name: 'farm', caption: 'x', story: 'settlement-of-iceland', log: quiet }), farm);
   assert.deepEqual(zones({ root, log: quiet }).map(p => [p.a.id, p.b.id].sort()), [['iceland-930', 'island']]);
   // one name in two groups
   fs.cpSync(path.join(root, 'content/shared/battles/iceland/11th-century/althing-1012'), path.join(root, 'content/shared/battles/elsewhere/althing-1012'), { recursive: true });
@@ -1141,13 +1152,13 @@ test('a strict build names the way out of a copy of a shared zone, and a zone fi
   assert.throws(() => zones({ root, log: quiet }), /content\/shared\/zones\/island-930\/zone\.geojson: /);
 });
 
-test('harita image tells two pages by their query apart, refuses a file without an image extension, and rehash names a folder without image.yaml', () => {
+test('harita image tells two pages by their query apart, refuses a file without an image extension, and rehash names a folder without image.yaml', async () => {
   const root = copy(), page = id => `https://collections.example.org/object.php?id=${id}`;
-  const sword = image({ root, file: svgFile(root, 'sword'), name: 'sword', caption: 'A sword', source: page(101), story: 'settlement-of-iceland', log: quiet });
-  const helmet = image({ root, file: svgFile(root, 'helmet'), name: 'helmet', caption: 'A helmet', source: page(202), log: quiet });
+  const sword = await image({ root, file: svgFile(root, 'sword'), name: 'sword', caption: 'A sword', source: page(101), story: 'settlement-of-iceland', log: quiet });
+  const helmet = await image({ root, file: svgFile(root, 'helmet'), name: 'helmet', caption: 'A helmet', source: page(202), log: quiet });
   assert.notEqual(sword, helmet);
   fs.writeFileSync(path.join(root, 'noext'), 'x');
-  assert.throws(() => image({ root, file: path.join(root, 'noext'), name: 'thing', caption: 'x', log: quiet }), /an image is a \.jpg, \.jpeg, \.png, \.webp, \.svg or \.gif file/);
+  await assert.rejects(image({ root, file: path.join(root, 'noext'), name: 'thing', caption: 'x', log: quiet }), /an image is a \.jpg, \.jpeg, \.png, \.webp, \.svg or \.gif file/);
   fs.mkdirSync(path.join(root, 'content/shared/images/bare-a1b2c3'));
   fs.writeFileSync(path.join(root, 'content/shared/images/bare-a1b2c3/image.svg'), '<svg/>');
   const lines = [];
@@ -1159,19 +1170,20 @@ test('a strict build checks the images it ships, and a story built alone keeps t
   const root = copy();
   secondStory(root);
   for (const f of ['pages/020-althing/zones/island.geojson', 'pages/010-landnam/zones/southwest.geojson']) redraw(root, `content/second-story/${f}`);
-  const shared = image({ root, file: svgFile(root, 'plain'), name: 'plain', caption: 'The plain', log: quiet });
+  const shared = await image({ root, file: svgFile(root, 'plain'), name: 'plain', caption: 'The plain', log: quiet });
   append(root, 'content/second-story/pages/010-landnam/text/en.md', `@image ${shared}`);
   // an image only a marker no page shows: not shipped, so neither its hash nor its caption counts
-  const hidden = image({ root, file: svgFile(root, 'hof'), name: 'hof', caption: 'The hof', story: 'settlement-of-iceland', log: quiet });
+  const hidden = await image({ root, file: svgFile(root, 'hof'), name: 'hof', caption: 'The hof', story: 'settlement-of-iceland', log: quiet });
   fs.appendFileSync(path.join(root, STORY, 'shared/markers.yaml'), `hof:\n  lnglat: [-21.1, 64.3]\n  label: Hof\n  image: ${hidden}\n`);
-  edit(root, `${STORY}/shared/images/${hidden}/image.yaml`, /^sha256:.*\n/m, '');
+  fs.writeFileSync(path.join(root, STORY, `shared/images/${hidden}/image.svg`), '<svg xmlns="http://www.w3.org/2000/svg"><title>new</title></svg>');
   await make(root, { strict: true });
-  assert.ok(fs.existsSync(path.join(root, `dist/images/${shared}.svg`)));
+  const key = path.join(root, 'dist/assets', originalKey(root, shared));
+  assert.ok(fs.existsSync(key));
   await make(root, { story: 'settlement-of-iceland' });
-  assert.ok(fs.existsSync(path.join(root, `dist/images/${shared}.svg`)), 'the second story still shows it');
-  // dist/images/ is the folder every story shares, so no story takes its name
-  edit(root, `${STORY}/story.yaml`, 'id: settlement-of-iceland', 'id: images');
-  await assert.rejects(make(root), /the story id "images" names the folder dist\/images\/ that holds what every story shares/);
+  assert.ok(fs.existsSync(key), 'the second story still shows it');
+  // dist/assets/ holds the images and tiles, so no story takes its name
+  edit(root, `${STORY}/story.yaml`, 'id: settlement-of-iceland', 'id: assets');
+  await assert.rejects(make(root), /the story id "assets" names the folder dist\/assets\/ that holds the images and tiles of a --local-assets build/);
 });
 
 test('an inline text without the default language names its file, and --like keeps the rest of the cache', async () => {
@@ -1210,7 +1222,7 @@ test("a broken zone file in another story leaves a story built alone working, an
   assert.deepEqual(check({ root, story: 'second-story', log: quiet }), []);
 });
 
-test('--share reads every catalogue before it writes, and harita image checks its fields and its folder first', () => {
+test('--share reads every catalogue before it writes, and harita image checks its fields and its folder first', async () => {
   const root = copy();
   secondStory(root);
   fs.mkdirSync(path.join(root, STORY, 'i18n'));
@@ -1218,9 +1230,9 @@ test('--share reads every catalogue before it writes, and harita image checks it
   assert.throws(() => zones({ root, share: 'settlement-of-iceland/island', replace: ['second-story/island'], log: quiet }), /settlement-of-iceland\/i18n\/tr\.yaml: /);
   assert.ok(fs.existsSync(path.join(root, ISLAND)) && !fs.existsSync(path.join(root, 'content/shared/zones/island')));
   const file = svgFile(root, 'farm');
-  assert.throws(() => image({ root, file, name: 'farm', caption: 'x', source: 'commons.wikimedia.org/wiki/File:Farm.jpg', log: quiet }), /source: Invalid URL/);
+  await assert.rejects(image({ root, file, name: 'farm', caption: 'x', source: 'commons.wikimedia.org/wiki/File:Farm.jpg', log: quiet }), /source: Invalid URL/);
   assert.ok(!fs.existsSync(path.join(root, 'content/shared/images')));
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'harita-empty-'));
-  assert.throws(() => image({ root: empty, file, name: 'farm', caption: 'x', log: quiet }), /content\/: no story\.yaml found, run harita image from a content project/);
+  await assert.rejects(image({ root: empty, file, name: 'farm', caption: 'x', log: quiet }), /content\/: no story\.yaml found, run harita image from a content project/);
   assert.ok(!fs.existsSync(path.join(empty, 'content')));
 });

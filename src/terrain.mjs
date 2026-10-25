@@ -10,7 +10,7 @@ export const BASE_ZOOM = 7;  // the whole extent down to this zoom; a page that 
 const SOURCE_ZOOM = 15;      // the deepest zoom the source has tiles for
 const VIEW = [1200, 900];    // a large map pane in CSS pixels, for the zoom a page opens at
 const PAD = 0.1;             // the share of a page's bbox added on each side, so a little panning stays sharp
-const VERSION = 1;           // part of the cache folder name; bump it when cut() changes
+export const VERSION = 1;    // part of the cache folder name and the store keys, bumped when cut() changes
 
 // Each source's credit as its licence asks for it, with a box around the area it covers. The texts follow
 // https://github.com/tilezen/joerd/blob/master/docs/attribution.md
@@ -55,6 +55,9 @@ export function terrainPlan(extent, pages) {
   return { ranges, maxzoom, credits };
 }
 
+// A tile's key in the asset store, from its "z/x/y".
+export const tileKey = k => `terrain/v${VERSION}/${k}.png`;
+
 // Every tile of the plans as "z/x/y", once.
 export function tileKeys(plans) {
   const keys = new Set();
@@ -84,36 +87,41 @@ async function fromAws(key) {
   }
 }
 
-// Cuts the tiles missing from the cache, then copies every tile into out. elevation(key) returns a source
-// PNG and stands in for the download in tests.
-export async function terrainTiles({ keys, cache, out, elevation = fromAws, log = console.log }) {
+// Cuts the tiles missing from the cache and returns the cache folder. elevation(key) returns a source PNG and
+// stands in for the download in tests.
+export async function cutTiles({ keys, cache, elevation = fromAws, log = console.log }) {
   const dir = path.join(cache, `terrain-v${VERSION}`);
   const missing = keys.filter(k => !fs.existsSync(path.join(dir, k + '.png')));
-  if (missing.length) {
-    log(`elevation: fetching ${missing.length} of ${keys.length} tiles into ${path.relative(process.cwd(), dir) || dir}`);
-    let next = 0, done = 0;
-    const worker = async () => {
-      while (next < missing.length) {
-        const key = missing[next++];
-        let raw;
-        try { raw = await elevation(key); } catch (err) {
-          throw new Error(`elevation tile ${key} could not be fetched from ${SOURCE} (${err.message}). The first build of an area needs the network, later builds read ${dir}`);
-        }
-        const file = path.join(dir, key + '.png');
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, cut(raw));
-        if (++done % 200 === 0) log(`elevation: ${done} of ${missing.length}`);
+  if (!missing.length) return dir;
+  log(`elevation: fetching ${missing.length} of ${keys.length} tiles into ${path.relative(process.cwd(), dir) || dir}`);
+  let next = 0, done = 0;
+  const worker = async () => {
+    while (next < missing.length) {
+      const key = missing[next++];
+      let raw;
+      try { raw = await elevation(key); } catch (err) {
+        throw new Error(`elevation tile ${key} could not be fetched from ${SOURCE} (${err.message}). The first build of an area needs the network, later builds read ${dir}`);
       }
-    };
-    await Promise.all(Array.from({ length: 8 }, worker));
-  }
+      const file = path.join(dir, key + '.png');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, cut(raw));
+      if (++done % 200 === 0) log(`elevation: ${done} of ${missing.length}`);
+    }
+  };
+  await Promise.all(Array.from({ length: 8 }, worker));
+  return dir;
+}
+
+// Cuts the tiles missing from the cache, then copies every tile to its key under out.
+export async function terrainTiles({ keys, cache, out, elevation = fromAws, log = console.log }) {
+  const dir = await cutTiles({ keys, cache, elevation, log });
   let bytes = 0;
   for (const k of keys) {
-    const from = path.join(dir, k + '.png'), to = path.join(out, k + '.png'), size = fs.statSync(from).size;
+    const from = path.join(dir, k + '.png'), to = path.join(out, tileKey(k)), size = fs.statSync(from).size;
     bytes += size;
     if (fs.existsSync(to) && fs.statSync(to).size === size) continue;
     fs.mkdirSync(path.dirname(to), { recursive: true });
     fs.copyFileSync(from, to);
   }
-  log(`wrote dist/terrain (${keys.length} tiles, ${(bytes / 1e6).toFixed(1)} MB)`);
+  log(`wrote ${keys.length} elevation tiles (${(bytes / 1e6).toFixed(1)} MB) into ${path.join(path.basename(path.dirname(out)), path.basename(out))}/terrain`);
 }

@@ -4,14 +4,14 @@ import path from 'path';
 import http from 'http';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
+import { resolve, typeOf } from './routes.mjs';
 
 const PKG = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.md': 'text/markdown; charset=utf-8', '.txt': 'text/plain; charset=utf-8',
-  '.xml': 'application/xml', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.json': 'application/json' };
 const RELOAD = `<script>(()=>{let v=null;setInterval(async()=>{try{const r=await fetch('/__version');const t=await r.text();if(v===null)v=t;else if(t!==v)location.reload();}catch{}},1000)})()</script>`;
 
 // Serve root/dist on the port and rebuild on changes: a change in one story's folder rebuilds that story and the main
-// page, any other change every story. Returns the http server. Builds run in a child process, so package edits apply.
+// page, any other change every story. Returns the http server. Builds run in a child process, so package edits apply,
+// and with --local-assets, so the images on this machine show before they are uploaded.
 // story serves that one story as a site of its own, built into out, by default dist/.
 export function dev({ root = process.cwd(), port = Number(process.env.PORT) || 8080, log = console.log, story = null, out = null } = {}) {
   const DIST = out ? path.resolve(root, out) : path.join(root, 'dist'), CONTENT = path.join(root, 'content');
@@ -25,7 +25,7 @@ export function dev({ root = process.cwd(), port = Number(process.env.PORT) || 8
     const t0 = Date.now(), wasAll = all, stories = [...changed];
     all = false; changed = new Set();
     const scope = story ? ['--story', story, ...(out ? ['--out', out] : [])] : wasAll ? [] : stories.flatMap(s => ['--only', s]);
-    const p = spawn(process.execPath, [path.join(PKG, 'bin', 'harita.mjs'), 'build', ...scope], { stdio: 'inherit', cwd: root });
+    const p = spawn(process.execPath, [path.join(PKG, 'bin', 'harita.mjs'), 'build', '--local-assets', ...scope], { stdio: 'inherit', cwd: root });
     p.on('exit', code => {
       building = false;
       if (code === 0) { version = Date.now(); log(`build ok in ${Date.now() - t0} ms, tabs reload`); }
@@ -49,23 +49,26 @@ export function dev({ root = process.cwd(), port = Number(process.env.PORT) || 8
   // site.yaml sits beside dist/ and node_modules/, so the project folder is watched on its own level, for that file
   watchers.push(fs.watch(root, (_, file) => { if (file === 'site.yaml') onChange(root, file); }));
 
-  const server = http.createServer((req, res) => {
-    const url = decodeURIComponent(req.url.split('?')[0]);
+  const server = http.createServer(async (req, res) => {
+    const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    let url = req.url.slice(0, req.url.length - query.length);
+    try { url = decodeURIComponent(url); } catch {}
     if (url === '/__version') { res.writeHead(200, { 'content-type': 'text/plain', 'cache-control': 'no-store' }); return res.end(String(version)); }
     if (url === '/' && !fs.existsSync(path.join(DIST, 'index.html'))) {
       const stories = fs.existsSync(DIST) ? fs.readdirSync(DIST).filter(d => fs.existsSync(path.join(DIST, d, 'index.html'))) : [];
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end(`<!doctype html><meta charset="utf-8"><title>Stories</title><h1>Stories</h1><ul>${stories.map(s => `<li><a href="/${s}/">${s}</a></li>`).join('')}</ul>${RELOAD}`);
     }
-    let file = path.join(DIST, url.endsWith('/') ? url + 'index.html' : url), status = 200;
-    // as on GitHub Pages: a folder without its slash redirects to it, an unknown path gets 404.html
-    if (file.startsWith(DIST) && fs.existsSync(path.join(file, 'index.html'))) { res.writeHead(301, { location: url + '/' + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '') }); return res.end(); }
-    if (!file.startsWith(DIST) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
-      file = path.join(DIST, '404.html'), status = 404;
-      if (!fs.existsSync(file)) { res.writeHead(404); return res.end('not found'); }
-    }
+    // the same answers as the Worker on the site: index pages, the slash redirect, redirects.json and 404.html
+    const fileOf = key => path.join(DIST, key);
+    const exists = key => { const f = fileOf(key); return f.startsWith(DIST + path.sep) && fs.existsSync(f) && fs.statSync(f).isFile(); };
+    const redirect = p => { const f = fileOf('redirects.json'); return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8'))[p] ?? null : null; };
+    const r = await resolve(url, exists, { redirect, query });
+    if (r.location) { res.writeHead(301, { location: r.location }); return res.end(); }
+    const file = fileOf(r.key), status = r.status;
+    if (!fs.existsSync(file)) { res.writeHead(404); return res.end('not found'); }
     const ext = path.extname(file);
-    res.writeHead(status, { 'content-type': TYPES[ext] ?? 'application/octet-stream', 'cache-control': 'no-store' });
+    res.writeHead(status, { 'content-type': typeOf(file), 'cache-control': 'no-store' });
     if (ext === '.html') return res.end(fs.readFileSync(file, 'utf8').replace('</body>', RELOAD + '</body>'));
     fs.createReadStream(file).pipe(res);
   });

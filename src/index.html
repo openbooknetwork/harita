@@ -150,7 +150,7 @@ function render(){
           <div class="meta"><span>${s.pages} ${esc(S.ui[lang].pages)}</span><span>${esc(s.languages.map(l => S.ui[l]?.name ?? l).join(', '))}</span></div>
           <a class="open" href="${storyLink(s.id, storyLang(s))}">${esc(S.ui[lang].open)}</a>
         </div>
-        <div class="cover">${s.cover ? `<img src="./${esc(s.id)}/${esc(s.cover)}" alt="">` : `<span>${esc(L(s.title))}</span>`}</div>
+        <div class="cover">${s.cover ? `<img src="${esc(s.cover)}" alt="">` : `<span>${esc(L(s.title))}</span>`}</div>
       </div>
     </li>`).join('');
 }
