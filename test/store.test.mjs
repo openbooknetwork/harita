@@ -76,7 +76,7 @@ function project({ url = null } = {}) {
   return root;
 }
 const make = (root, opts = {}) => build({ root, log: quiet, cache: CACHE, elevation, ...opts });
-const put = (root, opts = {}) => upload({ root, log: quiet, cache: CACHE, elevation, wait: 1, ...opts });
+const put = (root, opts = {}) => upload({ root, log: quiet, progress: quiet, cache: CACHE, elevation, wait: 1, ...opts });
 const yamlOf = (root, dir) => fs.readFileSync(path.join(root, dir, 'image.yaml'), 'utf8');
 const sha = (root, dir) => yamlOf(root, dir).match(/^sha256: (\w+)$/m)[1];
 const svg = text => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><title>${text}</title></svg>`);

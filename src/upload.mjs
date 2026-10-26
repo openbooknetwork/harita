@@ -42,19 +42,30 @@ async function originalOf(im, reader, inStore) {
   return bytes;
 }
 
+// Progress of a story's upload: on a terminal one line rewritten in place, elsewhere a line every thousand objects.
+const defaultProgress = ({ story, n, total, bytes, done }) => {
+  const line = `${story}: ${n.toLocaleString('en')} of ${total.toLocaleString('en')} objects, ${mb(bytes)}`;
+  if (process.stdout.isTTY) process.stdout.write(`\r\x1b[K${done ? '' : line}`);
+  else if (!done && n % 1000 === 0) console.log(line);
+};
+
 // Puts the objects of story, else of every story, into the store of site.yaml's assets: the originals and their WebP
 // sizes, the elevation tiles, and last each story's hash tree with latest.json naming it. dryRun lists what would go
 // and writes nothing. Returns the keys uploaded, or with dryRun the keys it would upload.
-export async function upload({ root = process.cwd(), story = null, dryRun = false, log = console.log, cache = path.join(root, '.cache', 'harita'), elevation, wait } = {}) {
+export async function upload({ root = process.cwd(), story = null, dryRun = false, log = console.log, progress = defaultProgress, cache = path.join(root, '.cache', 'harita'), elevation, wait } = {}) {
   const { assets, stories } = storyAssets({ root, story, log });
   const reader = storeReader(assets.url, { wait }), writer = dryRun ? null : storeWriter(assets, { wait });
   // an upload lists the bucket once, a thousand keys a request, and a dry run asks through the public URL alone
   const held = writer ? new Set((await writer.list()).map(o => o.key)) : null;
+  if (held) log(`the store holds ${held.size.toLocaleString('en')} objects`);
+  let cur = null;
   const seen = new Set(), done = new Set(), planned = new Set(), present = new Set(), sum = { images: 0, imageBytes: 0, tiles: 0, tileBytes: 0 };
   const put = async (key, body, type, cacheControl) => {
     if (done.has(key)) return 0;
     await writer.put(key, body, type, cacheControl);
     done.add(key);
+    cur.n++; cur.bytes += body.length;
+    progress({ ...cur, done: false });
     return body.length;
   };
   for (const s of stories) {
@@ -72,6 +83,7 @@ export async function upload({ root = process.cwd(), story = null, dryRun = fals
       for (const k of missing) planned.add(k);
       continue;
     }
+    cur = { story: s.story, n: 0, total: missing.size, bytes: 0 };
     // each image fetches its original once, makes the sizes it lacks and puts its objects, eight images at a time
     await pool(images, 8, async im => {
       const original = await originalOf(im, reader, !missing.has(im.keys.original));
@@ -87,6 +99,7 @@ export async function upload({ root = process.cwd(), story = null, dryRun = fals
       const dir = await cutTiles({ keys: tiles, cache, elevation, log });
       await pool(tiles, 8, async t => { sum.tileBytes += await put(tileKey(t), fs.readFileSync(path.join(dir, t + '.png')), 'image/png'); sum.tiles++; });
     }
+    progress({ ...cur, done: true });
     // the tree goes last, once every object it names is in the store, and latest.json names it
     const tree = Buffer.from(JSON.stringify(s.tree));
     await writer.put(`meta/${s.story}/${s.tree.root}.json`, tree, 'application/json');
