@@ -123,11 +123,12 @@ to new keys.
 ### harita upload
 
 `harita upload [--story <id>] [--dry-run]` puts the objects a story needs into the bucket, or those of every story.
-For each image the store lacks it takes the original from the folder, else from the store, else from `url`, checks
-it against `sha256` and the rules in [Images](#images), and makes the WebP sizes. It cuts the missing tiles into
-`.cache/harita/` and uploads each object with `Content-MD5`, eight at a time, trying a failed request three more
-times. The story's hash tree goes last, then `latest.json`. A run cut short writes no tree, and the next run puts
-the rest. It prints a summary such as `uploaded 34 images (12.1 MB) and 812 tiles (21.4 MB), 1,180 were in the
+It lists the bucket once, a thousand keys a request, to find what the store lacks. For each image the store lacks it
+takes the original from the folder, else from the store, else from `url`, checks it against `sha256` and the rules
+in [Images](#images), and makes the WebP sizes. It cuts the missing tiles into `.cache/harita/` and uploads each
+object with `Content-MD5`, eight at a time, trying a failed request five more times over half a minute. The
+story's hash tree goes last, then `latest.json`. A run cut short writes no tree, and the next run puts the rest. It
+prints a summary such as `uploaded 34 images (12.1 MB) and 812 tiles (21.4 MB), 1,180 were in the
 store`.
 
 The credentials come from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, the S3 credentials of an API token for
@@ -141,8 +142,8 @@ keys, and the root hash the sha256 of the sorted lines `<directory hash> <direct
 
 `harita build --strict` fails when the store lacks an object a page links to, and names the image folders, the
 count of missing tiles and `harita upload --story <id>`. For each story it requests the meta file of the tree's
-root hash, which exists once the story is complete. Else it reads the tree `latest.json` names, and sends a HEAD
-request for each key of the directories that differ that the stored tree lacks. A story without `latest.json`
+root hash, which exists once the story is complete. Else it reads the tree `latest.json` names, and asks for the first
+byte of each key of the directories that differ that the stored tree lacks. A story without `latest.json`
 fails at once. An unchanged story costs one request, and every request goes through `assets.url`, so the check
 needs no credentials. A build without `--strict` asks the store nothing.
 

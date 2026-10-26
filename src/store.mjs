@@ -29,14 +29,14 @@ export async function pool(items, n, fn) {
   return out;
 }
 
-// A request tried again three times on a network error or a 5xx or 429 answer, waiting longer each time. Returns the
-// last answer.
-export async function retry(what, request, { wait = 500 } = {}) {
+// A request tried again five times on a network error or a 5xx or 429 answer, waiting twice as long each time, half
+// a minute in all. Returns the last answer, or throws with the status or the error code, such as ETIMEDOUT.
+export async function retry(what, request, { wait = 1000 } = {}) {
   for (let attempt = 0; ; attempt++) {
     let res = null, error = null;
     try { res = await request(); } catch (err) { error = err; }
     if (res && res.status < 500 && res.status !== 429) return res;
-    if (attempt === 3) throw new Error(`${what}: ${res ? `HTTP ${res.status}` : error.cause?.message ?? error.message}`);
+    if (attempt === 5) throw new Error(`${what}: ${res ? `HTTP ${res.status}` : [error.cause?.code, error.cause?.message || error.message].filter(Boolean).join(' ')}`);
     await new Promise(r => setTimeout(r, wait * 2 ** attempt));
   }
 }
@@ -45,9 +45,11 @@ export async function retry(what, request, { wait = 500 } = {}) {
 export function storeReader(url, opts = {}) {
   const r = {
     count: 0,
-    async head(key) {
+    // whether the store holds the key: a GET of its first byte, since the store closes the connection after a HEAD
+    async has(key) {
       r.count++;
-      const res = await retry(url + key, () => fetch(url + key, { method: 'HEAD' }), opts);
+      const res = await retry(url + key, () => fetch(url + key, { headers: { Range: 'bytes=0-0' } }), opts);
+      await res.arrayBuffer();
       if (res.status === 404 || res.status === 403) return false;
       if (!res.ok) throw new Error(`${url + key}: HTTP ${res.status}`);
       return true;
@@ -104,8 +106,8 @@ export function storeWriter({ endpoint, bucket }, { command = 'harita upload', .
 }
 
 // The keys of a tree the store lacks. The meta file of the tree's root means none. Else the tree latest.json names
-// tells the directories that match and the keys uploaded, and a HEAD request asks for each other key. A story without
-// latest.json returns null, or with headAll a HEAD request for every key.
+// tells the directories that match and the keys uploaded, and the store is asked for each other key. A story without
+// latest.json returns null, or with headAll a request for every key.
 export async function missingKeys(reader, tree, { headAll = false } = {}) {
   const meta = `meta/${tree.story}/`;
   if (await reader.get(`${meta}${tree.root}.json`)) return { missing: [], complete: true };
@@ -117,8 +119,14 @@ export async function missingKeys(reader, tree, { headAll = false } = {}) {
     if (tree.dirs[d]?.hash === x.hash) same.add(d);
   }
   const ask = [...new Set(Object.entries(tree.dirs).filter(([d]) => !same.has(d)).flatMap(([, x]) => x.keys).filter(k => !known.has(k)))];
-  const found = await pool(ask, 8, k => reader.head(k));
+  const found = await pool(ask, 8, k => reader.has(k));
   return { missing: ask.filter((_, i) => !found[i]), complete: false };
+}
+
+// The keys of a tree that a listing of the bucket lacks, held being the set of keys in the store.
+export function missingIn(held, tree) {
+  const keys = [...new Set(Object.values(tree.dirs).flatMap(x => x.keys))];
+  return { missing: keys.filter(k => !held.has(k)), complete: held.has(`meta/${tree.story}/${tree.root}.json`) };
 }
 
 // The missing objects of a tree in words: the image folders by path, and the tiles by count.

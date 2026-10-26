@@ -14,6 +14,7 @@ import sharp from 'sharp';
 import { PNG } from 'pngjs';
 import { build, check, deploy, i18n, image, rehash, upload } from '../src/index.mjs';
 import { storyAssets } from '../src/build.mjs';
+import { storeReader } from '../src/store.mjs';
 import { webpSizes } from '../src/upload.mjs';
 
 const EXAMPLE = fileURLToPath(new URL('../example/', import.meta.url));
@@ -25,7 +26,7 @@ const elevation = async () => TILE;
 process.env.AWS_ACCESS_KEY_ID = 'test-key';
 process.env.AWS_SECRET_ACCESS_KEY = 'test-secret';
 
-// The store: GET and HEAD read objects under /pub/, and /files/ serves downloads. Signed requests work on the assets
+// The store: GET reads objects under /pub/, the first byte alone with a Range header, and /files/ serves downloads. Signed requests work on the assets
 // bucket under /bucket/ and the pages bucket under /site/: PUT, DELETE, and a list of seven keys a page. requests
 // lists every request as "METHOD path", and failPuts makes that many PUTs answer 500.
 const server = { objects: new Map(), site: new Map(), files: new Map(), requests: [], failPuts: 0, refuse: null };
@@ -54,6 +55,7 @@ const httpServer = http.createServer(async (req, res) => {
   const [table, key] = pathname.startsWith('/pub/') ? [server.objects, pathname.slice(5)] : [server.files, pathname.slice(7)];
   const o = table.get(key);
   if (!o) return send(404);
+  if (req.headers.range === 'bytes=0-0') return send(206, { 'content-type': o.type ?? 'application/octet-stream', 'content-range': `bytes 0-0/${o.bytes.length}` }, o.bytes.subarray(0, 1));
   send(200, { 'content-type': o.type ?? 'application/octet-stream' }, req.method === 'HEAD' ? undefined : o.bytes);
 });
 await new Promise(r => httpServer.listen(0, '127.0.0.1', r));
@@ -158,10 +160,10 @@ test('harita upload puts the missing objects with their headers, then the tree, 
   assert.equal(JSON.parse(server.objects.get('meta/settlement-of-iceland/latest.json').bytes).root, tree.root);
   assert.equal(uploaded.length, 3 + tiles.length);
   assert.match(lines.at(-1), new RegExp(`^uploaded 1 image \\(0\\.0 MB\\) and ${tiles.length} tiles \\(\\d+\\.\\d MB\\), 0 were in the store$`));
-  // a second run finds the tree of the same root and puts nothing
+  // a second run lists the bucket, finds the tree of the same root and puts nothing
   server.requests = [];
   assert.deepEqual(await put(root), []);
-  assert.deepEqual(server.requests, [`GET /pub/meta/settlement-of-iceland/${tree.root}.json`]);
+  assert.ok(server.requests.length && server.requests.every(r => r === 'GET /bucket/'), 'the listing alone, a page of keys a request');
 });
 
 test('harita upload takes an original from the file here, else the store, else its url', async () => {
@@ -246,7 +248,7 @@ test('harita image and harita upload refuse an original that is too large, of an
   await assert.rejects(put(root), new RegExp(`${id}/image\\.jpg: the file holds the place it was taken`));
 });
 
-test('harita build --strict asks one request of an unchanged story, HEADs only new keys, and names harita upload', async () => {
+test('harita build --strict asks one request of an unchanged story, asks only for new keys, and names harita upload', async () => {
   const root = project(), farm = await shown(root, 'farm', svg('farm'));
   await assert.rejects(make(root, { strict: true }), /content\/settlement-of-iceland: the store holds no upload of this story, harita upload --story settlement-of-iceland puts its images and tiles there/);
   await put(root);
@@ -259,14 +261,14 @@ test('harita build --strict asks one request of an unchanged story, HEADs only n
   const field = await shown(root, 'field', svg('field'));
   server.requests = [];
   await assert.rejects(make(root, { strict: true }), new RegExp(`content/settlement-of-iceland: the store lacks the images of ${field.dir}, harita upload --story settlement-of-iceland puts them there`));
-  assert.deepEqual(server.requests.filter(r => r.startsWith('HEAD')).sort(), keysOf(root, field).map(k => `HEAD /pub/${k}`).sort());
+  assert.deepEqual(server.requests.filter(r => !r.includes('/meta/')).sort(), keysOf(root, field).map(k => `GET /pub/${k}`).sort());
   // a folder moved to content/shared/images/ keeps its keys, which the stored tree lists, so the check asks for none
   await put(root);
   fs.mkdirSync(path.join(root, 'content/shared/images'), { recursive: true });
   fs.renameSync(path.join(root, farm.dir), path.join(root, 'content/shared/images', farm.id));
   server.requests = [];
   await make(root, { strict: true });
-  assert.equal(server.requests.filter(r => r.startsWith('HEAD')).length, 0);
+  assert.equal(server.requests.filter(r => !r.includes('/meta/')).length, 0);
 });
 
 test('a --local-assets build links an image without its original to its url, else to the store', async () => {
@@ -401,4 +403,14 @@ test('harita deploy --dry-run lists what would go and writes nothing, and withou
   const key = process.env.AWS_ACCESS_KEY_ID;
   delete process.env.AWS_ACCESS_KEY_ID;
   try { await assert.rejects(site(root), /harita deploy writes with the S3 credentials of an API token for the bucket: set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY/); } finally { process.env.AWS_ACCESS_KEY_ID = key; }
+});
+
+test('a request that fails on the network names the error code after its retries', async () => {
+  // a port that was listening a moment ago and refuses now
+  const closed = http.createServer();
+  await new Promise(r => closed.listen(0, '127.0.0.1', r));
+  const port = closed.address().port;
+  await new Promise(r => closed.close(r));
+  const reader = storeReader(`http://127.0.0.1:${port}/`, { wait: 1 });
+  await assert.rejects(reader.has('images/x'), new RegExp(`^Error: http://127\\.0\\.0\\.1:${port}/images/x: ECONNREFUSED`));
 });

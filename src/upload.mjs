@@ -5,7 +5,7 @@ import path from 'path';
 import { storyAssets } from './build.mjs';
 import { checkOriginal, contentType, downloadOriginal, sha256Of } from './image.mjs';
 import { cutTiles, tileKey } from './terrain.mjs';
-import { storeReader, storeWriter, missingKeys, pool, describeMissing } from './store.mjs';
+import { storeReader, storeWriter, missingKeys, missingIn, pool, describeMissing } from './store.mjs';
 import { mb, plural } from './util.mjs';
 
 const SIZES = { large: 1280, small: 320 };
@@ -48,6 +48,8 @@ async function originalOf(im, reader, inStore) {
 export async function upload({ root = process.cwd(), story = null, dryRun = false, log = console.log, cache = path.join(root, '.cache', 'harita'), elevation, wait } = {}) {
   const { assets, stories } = storyAssets({ root, story, log });
   const reader = storeReader(assets.url, { wait }), writer = dryRun ? null : storeWriter(assets, { wait });
+  // an upload lists the bucket once, a thousand keys a request, and a dry run asks through the public URL alone
+  const held = writer ? new Set((await writer.list()).map(o => o.key)) : null;
   const seen = new Set(), done = new Set(), planned = new Set(), present = new Set(), sum = { images: 0, imageBytes: 0, tiles: 0, tileBytes: 0 };
   const put = async (key, body, type, cacheControl) => {
     if (done.has(key)) return 0;
@@ -56,7 +58,7 @@ export async function upload({ root = process.cwd(), story = null, dryRun = fals
     return body.length;
   };
   for (const s of stories) {
-    const { missing: list, complete } = await missingKeys(reader, s.tree, { headAll: true });
+    const { missing: list, complete } = held ? missingIn(held, s.tree) : await missingKeys(reader, s.tree, { headAll: true });
     const missing = new Set(list.filter(k => !done.has(k)));
     for (const k of Object.values(s.tree.dirs).flatMap(x => x.keys)) if (!missing.has(k) && !done.has(k)) present.add(k);
     if (complete) { log(`${s.story}: the store holds every object`); continue; }
