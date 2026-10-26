@@ -195,7 +195,8 @@ It lists the bucket, compares each key's ETag with the file's MD5, uploads the f
 with their `Content-Type` and `Content-MD5`, eight at a time, scripts and stylesheets before pages, and deletes the
 keys `dist/` no longer holds. It prints a summary such as `uploaded 212 files (3.1 MB), deleted 4, 1,118 were in
 the bucket`. `--dry-run` prints the files it would upload and the keys it would delete and writes nothing. A run
-cut short leaves the bucket with this release's scripts and some of its pages, and the next run finishes it.
+cut short leaves the bucket with this release's scripts and some of its pages, and the next run finishes it. On a
+terminal a line counts the files as they go up.
 
 The credentials come from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, the S3 credentials of an API token on
 the pages bucket alone. CI holds this token, while the assets bucket's token stays with the maintainers.

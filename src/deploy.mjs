@@ -7,14 +7,14 @@ import yaml from 'js-yaml';
 import { check, Site } from './schema.mjs';
 import { storeWriter, pool } from './store.mjs';
 import { typeOf } from './routes.mjs';
-import { mb, plural } from './util.mjs';
+import { mb, plural, progressLine } from './util.mjs';
 
 const CACHE = 'public, max-age=600';
 
 // Puts root/dist in site.yaml's pages.bucket, in the account of assets.endpoint, and deletes the keys
 // dist/ lacks. dryRun lists what would go and change and writes nothing. Returns the keys uploaded and deleted, and
 // how many were in the bucket as they are.
-export async function deploy({ root = process.cwd(), dryRun = false, log = console.log, wait } = {}) {
+export async function deploy({ root = process.cwd(), dryRun = false, log = console.log, progress = progressLine, wait } = {}) {
   const siteFile = path.join(root, 'site.yaml');
   const site = fs.existsSync(siteFile) ? check(Site, yaml.load(fs.readFileSync(siteFile, 'utf8')), 'site.yaml') : {};
   if (!site.pages) throw new Error('site.yaml: add a pages block with the bucket that holds the site, harita deploy writes dist/ there');
@@ -37,8 +37,15 @@ export async function deploy({ root = process.cwd(), dryRun = false, log = conso
   }
   // a page links its scripts by version, so the scripts go first and a new page finds its script in the bucket
   const script = f => /\.(js|css)$/.test(f);
-  for (const batch of [changed.filter(script), changed.filter(f => !script(f))])
-    await pool(batch, 8, f => writer.put(f, fs.readFileSync(path.join(dist, f)), typeOf(f), CACHE));
+  const cur = { what: 'dist', n: 0, total: changed.length, bytes: 0 };
+  const put = async f => {
+    const body = fs.readFileSync(path.join(dist, f));
+    await writer.put(f, body, typeOf(f), CACHE);
+    cur.n++; cur.bytes += body.length;
+    progress({ ...cur, done: false });
+  };
+  for (const batch of [changed.filter(script), changed.filter(f => !script(f))]) await pool(batch, 8, put);
+  progress({ ...cur, done: true });
   await pool(gone, 8, k => writer.delete(k));
   log(`uploaded ${plural(changed.length, 'file')} (${mb(bytes)}), deleted ${gone.length.toLocaleString('en')}, ${kept.toLocaleString('en')} were in the bucket`);
   return { uploaded: changed, deleted: gone, kept };

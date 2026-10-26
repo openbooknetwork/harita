@@ -350,7 +350,7 @@ test('a build writes redirects.json with both paths of every image folder', asyn
   assert.equal(JSON.parse(read(root, 'redirects.json'))[`/images/${farm.id}.jpg`], `/assets/${farmOrig}`);
 });
 
-const site = (root, opts = {}) => deploy({ root, log: quiet, wait: 1, ...opts });
+const site = (root, opts = {}) => deploy({ root, log: quiet, progress: quiet, wait: 1, ...opts });
 const distFiles = root => fs.readdirSync(path.join(root, 'dist'), { recursive: true }).filter(f => fs.statSync(path.join(root, 'dist', f)).isFile()).map(f => f.split(path.sep).join('/')).sort();
 const sitePuts = () => server.requests.filter(r => r.startsWith('PUT /site/')).map(r => r.slice('PUT /site/'.length));
 

@@ -6,7 +6,7 @@ import { storyAssets } from './build.mjs';
 import { checkOriginal, contentType, downloadOriginal, sha256Of } from './image.mjs';
 import { cutTiles, tileKey } from './terrain.mjs';
 import { storeReader, storeWriter, missingKeys, missingIn, pool, describeMissing } from './store.mjs';
-import { mb, plural } from './util.mjs';
+import { mb, plural, progressLine } from './util.mjs';
 
 const SIZES = { large: 1280, small: 320 };
 
@@ -42,17 +42,10 @@ async function originalOf(im, reader, inStore) {
   return bytes;
 }
 
-// Progress of a story's upload: on a terminal one line rewritten in place, elsewhere a line every thousand objects.
-const defaultProgress = ({ story, n, total, bytes, done }) => {
-  const line = `${story}: ${n.toLocaleString('en')} of ${total.toLocaleString('en')} objects, ${mb(bytes)}`;
-  if (process.stdout.isTTY) process.stdout.write(`\r\x1b[K${done ? '' : line}`);
-  else if (!done && n % 1000 === 0) console.log(line);
-};
-
 // Puts the objects of story, else of every story, into the store of site.yaml's assets: the originals and their WebP
 // sizes, the elevation tiles, and last each story's hash tree with latest.json naming it. dryRun lists what would go
 // and writes nothing. Returns the keys uploaded, or with dryRun the keys it would upload.
-export async function upload({ root = process.cwd(), story = null, dryRun = false, log = console.log, progress = defaultProgress, cache = path.join(root, '.cache', 'harita'), elevation, wait } = {}) {
+export async function upload({ root = process.cwd(), story = null, dryRun = false, log = console.log, progress = progressLine, cache = path.join(root, '.cache', 'harita'), elevation, wait } = {}) {
   const { assets, stories } = storyAssets({ root, story, log });
   const reader = storeReader(assets.url, { wait }), writer = dryRun ? null : storeWriter(assets, { wait });
   // an upload lists the bucket once, a thousand keys a request, and a dry run asks through the public URL alone
@@ -83,7 +76,7 @@ export async function upload({ root = process.cwd(), story = null, dryRun = fals
       for (const k of missing) planned.add(k);
       continue;
     }
-    cur = { story: s.story, n: 0, total: missing.size, bytes: 0 };
+    cur = { what: s.story, n: 0, total: missing.size, bytes: 0 };
     // each image fetches its original once, makes the sizes it lacks and puts its objects, eight images at a time
     await pool(images, 8, async im => {
       const original = await originalOf(im, reader, !missing.has(im.keys.original));
