@@ -1,6 +1,6 @@
 {
   "name": "@openhistoryatlas/harita",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Interactive timelines on a map: a static site with a page per step in every language, built from a content folder",
   "keywords": [
     "map",
