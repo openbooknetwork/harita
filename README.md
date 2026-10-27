@@ -339,10 +339,12 @@ Leave gaps in the numbers, 010, 020, so a page can be inserted later.
 Ids are global within a story and come from the folder name without its prefix. A zone, route or marker
 defined in any page is visible to every page. The ids in a battle folder belong to the battle.
 
-Battle, image and zone folders can sit in groups, folders that only order a library, at any depth:
-`content/shared/battles/ottoman/1402/ankara-1402/`. A folder that holds its `battle.yaml`, `image.yaml` or
-`zone.geojson` is the item and gives the id, and an id stays unique across the groups of a library. A story's
-`zones/` folders take subfolders for their zone files the same way.
+Story, battle, image and zone folders can sit in groups, folders that only order a library, at any depth:
+`content/ottoman/ottoman-mehmed-ii/` or `content/shared/battles/ottoman/1402/ankara-1402/`. A folder that holds
+its `story.yaml`, `battle.yaml`, `image.yaml` or `zone.geojson` is the item and gives the name, and a name stays
+unique across the groups of a library. Commands name a story by its folder name, as in `--story ottoman-mehmed-ii`.
+A group of stories holds other files too, such as notes. A story's `zones/` folders take subfolders for their zone
+files the same way.
 
 Every file is checked against a schema in `src/schema.mjs` before use. The build stops on the first bad
 file and lists each problem with its field path, for example `bbox: Too small: expected array to have

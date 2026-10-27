@@ -5,6 +5,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import { check, Story } from './schema.mjs';
 import { pageZoneFamilies } from './build.mjs';
+import { storyFolders } from './folders.mjs';
 
 const PATTERNS = ['hatch', 'cross', 'dots'];
 // CIELAB distance; at the 0.38 fill opacity the zones use, pairs under 30 were hard to tell apart in practice
@@ -52,11 +53,11 @@ function writePattern(root, file, name, pattern) {
 // With fix, each round writes one suggested pattern into story.yaml and checks again until no pair is left.
 export function patterns({ root = process.cwd(), fix = false, log = console.log } = {}) {
   const content = path.join(root, 'content');
-  const stories = fs.existsSync(content) ? fs.readdirSync(content).filter(d => fs.existsSync(path.join(content, d, 'story.yaml'))) : [];
-  if (!stories.length) throw new Error('content/: no story.yaml found, run this from a content project');
+  const stories = storyFolders(content, p => path.relative(root, p));
+  if (!stories.size) throw new Error('content/: no story.yaml found, run this from a content project');
   const left = [];
-  for (const id of stories) {
-    const dir = path.join(content, id), file = path.join(dir, 'story.yaml');
+  for (const [id, dir] of stories) {
+    const file = path.join(dir, 'story.yaml');
     for (let round = 0; round < 20; round++) {
       const story = check(Story, yaml.load(fs.readFileSync(file, 'utf8')), path.relative(root, file));
       // the families each page shows, read as the build reads the story, battles and shared zones included

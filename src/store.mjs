@@ -137,13 +137,14 @@ export function describeMissing(tree, missing) {
   return [folders.length && `the images of ${folders.join(', ')}`, tiles && `${tiles} elevation tile${tiles === 1 ? '' : 's'}`].filter(Boolean).join(' and ');
 }
 
-// harita build --strict: every object the trees name is in the store. Throws with the stories that lack some.
+// harita build --strict: every object the trees name is in the store. Throws with the stories that lack some, named by
+// each tree's dir, the story folder.
 export async function checkStore({ url, trees, log = console.log, ...opts }) {
   const reader = storeReader(url, opts), problems = [];
   for (const tree of trees) {
     const { missing } = await missingKeys(reader, tree);
-    if (missing === null) problems.push(`content/${tree.story}: the store holds no upload of this story, harita upload --story ${tree.story} puts its images and tiles there`);
-    else if (missing.length) problems.push(`content/${tree.story}: the store lacks ${describeMissing(tree, missing)}, harita upload --story ${tree.story} puts them there`);
+    if (missing === null) problems.push(`${tree.dir}: the store holds no upload of this story, harita upload --story ${tree.story} puts its images and tiles there`);
+    else if (missing.length) problems.push(`${tree.dir}: the store lacks ${describeMissing(tree, missing)}, harita upload --story ${tree.story} puts them there`);
   }
   if (problems.length) throw new Error(problems.join('\n'));
   log(`the store holds every image and tile of ${trees.length} stor${trees.length === 1 ? 'y' : 'ies'} (${reader.count} request${reader.count === 1 ? '' : 's'})`);

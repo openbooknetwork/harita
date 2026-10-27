@@ -16,8 +16,9 @@ const read = (root, file) => fs.readFileSync(path.join(root, file), 'utf8');
 test('dev rebuilds the story that changed, and every story when site.yaml changes', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'harita-dev-'));
   fs.cpSync(EXAMPLE, root, { recursive: true });
-  fs.cpSync(path.join(root, STORY), path.join(root, 'content/second-story'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'content/second-story/story.yaml'), read(root, 'content/second-story/story.yaml').replace('id: settlement-of-iceland', 'id: second-story'));
+  // the second story sits in a group folder, which the watcher looks through
+  fs.cpSync(path.join(root, STORY), path.join(root, 'content/later/second-story'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'content/later/second-story/story.yaml'), read(root, 'content/later/second-story/story.yaml').replace('id: settlement-of-iceland', 'id: second-story'));
   // fill the elevation cache with a stand-in tile first, so the builds dev starts stay offline
   const tile = PNG.sync.write(new PNG({ width: 256, height: 256 }));
   await build({ root, log: () => {}, elevation: async () => tile, localAssets: true });
@@ -31,7 +32,7 @@ test('dev rebuilds the story that changed, and every story when site.yaml change
     const mark = () => fs.appendFileSync(path.join(root, 'dist/settlement-of-iceland/index.html'), '<!-- kept -->');
     const kept = () => read(root, 'dist/settlement-of-iceland/index.html').endsWith('<!-- kept -->');
     mark();
-    fs.appendFileSync(path.join(root, 'content/second-story/pages/010-landnam/text/en.md'), '\nA line for the second story.\n');
+    fs.appendFileSync(path.join(root, 'content/later/second-story/pages/010-landnam/text/en.md'), '\nA line for the second story.\n');
     await builds(2);
     assert.ok(kept(), 'the first story stays as it was');
     assert.ok(read(root, 'dist/second-story/en/landnam/index.html').includes('A line for the second story.'));

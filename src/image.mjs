@@ -5,9 +5,8 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import yaml from 'js-yaml';
-import { libraryItems, isImage } from './folders.mjs';
+import { libraryItems, storyFolders, isImage } from './folders.mjs';
 import { check, ImageFolder } from './schema.mjs';
-import { listDirs } from './util.mjs';
 
 export const SIZES_VERSION = 1; // part of the keys of the WebP sizes, bumped when the sizes or their encoding change
 export const MAX_BYTES = 20e6;
@@ -115,7 +114,7 @@ export function imageIndex({ root = process.cwd() } = {}) {
     }
   };
   folders(path.join(content, 'shared', 'images'), null);
-  for (const s of listDirs(content).filter(s => fs.existsSync(path.join(content, s, 'story.yaml')))) folders(path.join(content, s, 'shared', 'images'), s);
+  for (const [s, d] of storyFolders(content, p => path.relative(root, p))) folders(path.join(d, 'shared', 'images'), s);
   return index;
 }
 
@@ -156,9 +155,9 @@ export async function image({ root = process.cwd(), file, name, caption, credit 
   const url = /^https?:\/\//i.test(file) ? file : null;
   if (!url && !fs.existsSync(file)) throw new Error(`${file}: no such file`);
   if (!url && !FORMAT[path.extname(file).toLowerCase()]) throw new Error(`${file}: an image is a .jpg, .jpeg, .png, .webp, .svg or .gif file`);
-  if (story && !fs.existsSync(path.join(root, 'content', story, 'story.yaml'))) throw new Error(`"${story}" is not a story folder under content/`);
-  const content = path.join(root, 'content');
-  if (!fs.existsSync(content) || !fs.readdirSync(content).some(d => fs.existsSync(path.join(content, d, 'story.yaml')))) throw new Error('content/: no story.yaml found, run harita image from a content project');
+  const stories = storyFolders(path.join(root, 'content'), p => path.relative(root, p));
+  if (!stories.size) throw new Error('content/: no story.yaml found, run harita image from a content project');
+  if (story && !stories.has(story)) throw new Error(`"${story}" is not a story folder under content/`);
   // the fields as image.yaml will hold them, checked before anything is fetched or written
   const fields = { caption, ...(credit ? { credit } : {}), ...(source ? { source } : {}), ...(url ? { url } : {}) };
   check(ImageFolder.partial({ file: true, sha256: true }), fields, '--caption, --credit and --source');
@@ -180,7 +179,7 @@ export async function image({ root = process.cwd(), file, name, caption, credit 
     log(`name it as ${hit.id}`);
     return hit.id;
   }
-  const base = story ? path.join(root, 'content', story, 'shared', 'images') : common;
+  const base = story ? path.join(stories.get(story), 'shared', 'images') : common;
   let id;
   // a fresh suffix, unused in every library and group
   do id = `${name}-${crypto.randomBytes(3).toString('hex')}`; while (index.some(i => i.id === id));
@@ -188,7 +187,7 @@ export async function image({ root = process.cwd(), file, name, caption, credit 
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, original), bytes);
   // the caption is in the story's default language, or for a shared image the site's
-  const settingsFile = story ? path.join(root, 'content', story, 'story.yaml') : path.join(root, 'site.yaml');
+  const settingsFile = story ? path.join(stories.get(story), 'story.yaml') : path.join(root, 'site.yaml');
   const settings = fs.existsSync(settingsFile) ? yaml.load(fs.readFileSync(settingsFile, 'utf8')) ?? {} : {};
   const lang = settings.default_language ?? settings.languages?.[0] ?? 'en';
   fs.writeFileSync(path.join(dir, 'image.yaml'), yaml.dump({ ...fields, ...(lang !== 'en' ? { default_language: lang } : {}), file: original, sha256: hash }, { lineWidth: -1 }));

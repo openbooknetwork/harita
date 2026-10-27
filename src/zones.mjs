@@ -8,9 +8,9 @@ import { fileURLToPath } from 'url';
 import * as turf from '@turf/turf';
 import { check, Zone, SharedZone, Story, Apart } from './schema.mjs';
 import { world } from './world.mjs';
-import { libraryItems, isZone } from './folders.mjs';
+import { libraryItems, storyFolders, isZone } from './folders.mjs';
 import { catalogueText, flatten } from './i18n.mjs';
-import { hash as sha, listDirs, idOf, boxesMeet } from './util.mjs';
+import { hash as sha, idOf, boxesMeet } from './util.mjs';
 
 const REPORT = 0.9, SAME = 0.98; // the overlap a pair is reported at, and the one that makes it the same land
 // part of each land cut's cache key: this file, world.mjs and the versions of the libraries the cut comes from
@@ -33,8 +33,7 @@ function zoneIndex({ root = process.cwd(), onProblem = null } = {}) {
     } catch (err) { if (!onProblem) throw err; onProblem(err.message); }
   };
   for (const [id, dir] of libraryItems(path.join(content, 'shared', 'zones'), isZone, p => path.relative(root, p))) add(null, id, path.join(dir, 'zone.geojson'), SharedZone, null);
-  for (const story of listDirs(content).filter(s => fs.existsSync(path.join(content, s, 'story.yaml')))) {
-    const storyDir = path.join(content, story);
+  for (const [story, storyDir] of storyFolders(content, p => path.relative(root, p))) {
     for (const f of fs.readdirSync(storyDir, { recursive: true }).sort()) {
       const parts = f.split(path.sep), at = parts.indexOf('zones');
       if (!f.endsWith('.geojson') || at < 0 || parts.some(p => p.startsWith('.'))) continue;
@@ -267,11 +266,11 @@ function share({ root, index, from, replace, log }) {
     const uses = path.join(o.place, 'zones.yaml');
     if (fs.existsSync(uses) && Object.hasOwn(yaml.load(fs.readFileSync(uses, 'utf8')) ?? {}, o.id)) throw new Error(`${rel(uses)} has an entry ${o.id} already`);
   }
-  const storyFile = s => path.join(root, 'content', s, 'story.yaml'), storyOf = s => check(Story, yaml.load(fs.readFileSync(storyFile(s), 'utf8')), rel(storyFile(s)));
+  const dirs = storyFolders(path.join(root, 'content'), rel), storyFile = s => path.join(dirs.get(s), 'story.yaml'), storyOf = s => check(Story, yaml.load(fs.readFileSync(storyFile(s), 'utf8')), rel(storyFile(s)));
   const meta = storyOf(src.story), def = meta.default_language ?? meta.languages[0];
   const feat = JSON.parse(fs.readFileSync(src.file, 'utf8')), { id: _, ...props } = feat.properties;
   // the story's catalogues, read before the first write so a broken one changes nothing
-  const catalogues = s => { const d = path.join(root, 'content', s, 'i18n'); return fs.existsSync(d) ? fs.readdirSync(d).filter(f => f.endsWith('.yaml')).map(f => path.join(d, f)) : []; };
+  const catalogues = s => { const d = path.join(dirs.get(s), 'i18n'); return fs.existsSync(d) ? fs.readdirSync(d).filter(f => f.endsWith('.yaml')).map(f => path.join(d, f)) : []; };
   const cats = catalogues(src.story).map(cat => {
     const text = fs.readFileSync(cat, 'utf8');
     try { return { cat, text, values: flatten(yaml.load(text) ?? {}) }; } catch (err) { throw new Error(`${rel(cat)}: ${err.message}`); }

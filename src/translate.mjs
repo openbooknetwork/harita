@@ -22,10 +22,7 @@ export function i18n({ root = process.cwd(), lang, story, log = console.log } = 
     log(`wrote ${path.relative(root, file)}: ${filled} of ${total} strings translated`);
     written.push(file);
   };
-  for (const [id, entries] of Object.entries(r.i18n.stories)) {
-    if (story && id !== story) continue;
-    write(path.join(root, 'content', id, 'i18n', lang + '.yaml'), entries, `${lang} strings for the story "${id}".`);
-  }
+  for (const [id, { dir, entries }] of Object.entries(r.i18n.stories)) write(path.join(root, dir, 'i18n', lang + '.yaml'), entries, `${lang} strings for the story "${id}".`);
   // a battle's, image folder's or zone folder's catalogues sit in its folder, for each language a story using it has
   for (const [dir, f] of Object.entries(r.i18n.folders)) {
     if (lang === f.defaultLang || !f.langs.includes(lang)) continue;

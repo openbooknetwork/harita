@@ -635,6 +635,30 @@ test('story builds one story into a site of its own, and out writes it elsewhere
   assert.ok(fs.existsSync(path.join(root, 'content/second-story/i18n/tr.yaml')) && !fs.existsSync(path.join(root, 'dist')));
 });
 
+test('a story in a group folder builds, checks, translates and takes images by its folder name', async () => {
+  const root = copy(), cache = fs.mkdtempSync(path.join(os.tmpdir(), 'harita-cache-')), nested = 'content/north/isles/second-story';
+  fs.cpSync(path.join(root, STORY), path.join(root, nested), { recursive: true });
+  edit(root, `${nested}/story.yaml`, 'id: settlement-of-iceland', 'id: second-story');
+  // a group holds other files and folders too
+  fs.writeFileSync(path.join(root, 'content/north/notes.md'), 'Plans for the north.\n');
+  fs.mkdirSync(path.join(root, 'content/north/drafts'));
+  append(root, 'site.yaml', 'repository: https://example.org/atlas');
+  await make(root, { cache });
+  assert.ok(fs.existsSync(path.join(root, 'dist/second-story/en/landnam/index.html')));
+  assert.equal(bundleOf(root, 'second-story').site.source, `https://example.org/atlas/tree/main/${nested}`);
+  assert.deepEqual(check({ root, story: 'second-story', pages: ['nowhere'], log: quiet }), [`${nested}/pages: no page "nowhere"`]);
+  i18n({ root, lang: 'tr', story: 'second-story', log: quiet });
+  assert.ok(fs.existsSync(path.join(root, nested, 'i18n/tr.yaml')));
+  const id = await image({ root, file: svgFile(root, 'nested'), name: 'nested', caption: 'A nested image', story: 'second-story', log: quiet });
+  assert.ok(fs.existsSync(path.join(root, nested, 'shared/images', id, 'image.yaml')));
+});
+
+test('two story folders of one name fail, naming both', async () => {
+  const root = copy();
+  fs.cpSync(path.join(root, STORY), path.join(root, 'content/north/settlement-of-iceland'), { recursive: true });
+  await assert.rejects(make(root), /content\/north\/settlement-of-iceland and content\/settlement-of-iceland have one name, rename one/);
+});
+
 // --- battle folders: a battle's card, pages and catalogues, shared by the stories that include it ---
 test('a shared battle builds in every story that includes it, and harita i18n writes its catalogue once', async () => {
   const root = copy();

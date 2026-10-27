@@ -38,11 +38,17 @@ export function dev({ root = process.cwd(), port = Number(process.env.PORT) || 8
     });
   }
 
+  // the story folder a file in content/ sits in, below any groups, named by the folder as the build names it
+  const storyOf = file => {
+    const parts = file.split(path.sep);
+    for (let i = 1; i < parts.length; i++) if (fs.existsSync(path.join(CONTENT, ...parts.slice(0, i), 'story.yaml'))) return parts[i - 1];
+    return null;
+  };
   let timer = null;
   const onChange = (dir, file) => {
     if (file && /(^|\/)\./.test(file)) return; // editor swap files and the like
-    const story = dir === CONTENT && file?.includes(path.sep) ? file.split(path.sep)[0] : null;
-    if (story && fs.existsSync(path.join(CONTENT, story, 'story.yaml'))) changed.add(story); else all = true;
+    const story = dir === CONTENT && file ? storyOf(file) : null;
+    if (story) changed.add(story); else all = true;
     clearTimeout(timer); timer = setTimeout(build, 150);
   };
   const watchers = WATCH.map(dir => fs.watch(dir, { recursive: true }, (_, file) => onChange(dir, file)));
