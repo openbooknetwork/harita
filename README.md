@@ -584,7 +584,8 @@ working, and its objects in the store.
 
 ### Zones
 
-A zone is a GeoJSON Feature with a Polygon geometry and these properties:
+A zone is a GeoJSON Feature with a Polygon geometry, or a MultiPolygon for a state whose land lies in parts, such
+as a town cut off inland, and these properties:
 
 ```json
 { "id": "greek1920", "family": "greek", "name": { "en": "...", "tr": "..." }, "clip": ["Turkey"] }

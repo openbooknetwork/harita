@@ -209,6 +209,22 @@ test('a family with two zones on one page is a problem for check, a warning for 
   await assert.rejects(make(root, { strict: true }), /030-kristnitaka: family "settled" has 2 zones on this page/);
 });
 
+test('a MultiPolygon zone holds a state whose land lies in parts, and each part keeps its land', async () => {
+  const root = copy();
+  edit(root, `${STORY}/story.yaml`, 'smoothing: 4', '  church: { priority: -1, color: "#8a3b2f", color_dark: "#d0806f" }\nsmoothing: 4');
+  fs.mkdirSync(path.join(root, `${STORY}/pages/030-kristnitaka/zones`));
+  fs.writeFileSync(path.join(root, `${STORY}/pages/030-kristnitaka/zones/sees.geojson`), JSON.stringify({
+    type: 'Feature', properties: { family: 'church', name: 'The two sees' },
+    geometry: { type: 'MultiPolygon', coordinates: [[[[-21, 63.9], [-20.6, 63.9], [-20.6, 64.1], [-21, 64.1], [-21, 63.9]]],
+      [[[-18.4, 65.6], [-18, 65.6], [-18, 65.8], [-18.4, 65.8], [-18.4, 65.6]]]] },
+  }));
+  edit(root, `${STORY}/pages/030-kristnitaka/page.yaml`, 'zones: [island]', 'zones: [island, sees]');
+  await make(root);
+  const g = zoneGeometry(bundleOf(root), 'sees');
+  assert.equal(g.type, 'MultiPolygon');
+  assert.equal(g.coordinates.length, 2);
+});
+
 test('schema fills defaults and lists every bad field at once', async () => {
   const page = schema.check(schema.Page, { date: '930', title: 'x', bbox: [-25, 63, -13, 67] }, 'page.yaml');
   assert.deepEqual([page.zones, page.routes, page.markers, page.sources], [[], [], [], []]);

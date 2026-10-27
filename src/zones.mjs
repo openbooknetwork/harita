@@ -119,11 +119,12 @@ function withLand(index, store) {
 // drawing's outline, in km. A point at sea draws no border, so it does not count.
 function widestGap(a, b) {
   let best = { km: 0, at: null, to: null };
+  const outlines = g => (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).map(p => turf.lineString(p[0]));
   for (const [from, other] of [[a, b], [b, a]]) {
-    const line = turf.lineString(other.geometry.coordinates[0]), land = turf.feature(from.land);
-    for (const pt of from.geometry.coordinates[0].slice(0, -1)) {
+    const lines = outlines(other.geometry), land = turf.feature(from.land);
+    for (const pt of outlines(from.geometry).flatMap(l => l.geometry.coordinates.slice(0, -1))) {
       if (!turf.booleanPointInPolygon(pt, land)) continue;
-      const km = turf.pointToLineDistance(pt, line, { units: 'kilometers' });
+      const [km, line] = lines.map(l => [turf.pointToLineDistance(pt, l, { units: 'kilometers' }), l]).reduce((m, x) => x[0] < m[0] ? x : m);
       if (km > best.km) best = { km, at: pt, to: turf.nearestPointOnLine(line, pt).geometry.coordinates };
     }
   }

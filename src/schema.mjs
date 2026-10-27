@@ -154,7 +154,9 @@ export const Include = z.object({
 
 const Ring = z.array(z.tuple([Lon, Lat])).min(4);
 const ZoneProperties = { family: Id, name: Translatable, clip: z.array(z.string()).optional() }; // clip: countries, else the story's land
-const ZoneGeometry = z.object({ type: z.literal('Polygon'), coordinates: z.array(Ring).min(1) });
+// a MultiPolygon holds a state whose land lies in parts, such as a town cut off inland, as one zone
+const ZoneGeometry = z.discriminatedUnion('type', [z.object({ type: z.literal('Polygon'), coordinates: z.array(Ring).min(1) }),
+  z.object({ type: z.literal('MultiPolygon'), coordinates: z.array(z.array(Ring).min(1)).min(1) })]);
 export const Zone = z.object({ type: z.literal('Feature'), properties: z.object({ id: Id.optional(), ...ZoneProperties }).strict(), geometry: ZoneGeometry });
 // zone.geojson in a shared zone folder, content/shared/zones/<id>/: the folder name is its id
 export const SharedZone = z.object({ type: z.literal('Feature'), properties: z.object({ ...ZoneProperties, default_language: Lang.default('en') }).strict(), geometry: ZoneGeometry });
