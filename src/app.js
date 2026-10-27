@@ -95,25 +95,39 @@ function battleCard(b){
   return el;
 }
 let battlePopup = null;
+// a map with room for the card beside the battle shows it there, a narrow one above it
+const cardBeside = () => $('map').getBoundingClientRect().width >= 700;
 function openBattle(id){
   const m = ML.map; if (!m) return;
   closeBattle();
-  const popup = new maplibregl.Popup({ offset: 30, maxWidth: 'none', focusAfterOpen: false, anchor: 'bottom', closeOnClick: false }).setLngLat(B.battles[id].lnglat).setDOMContent(battleCard(B.battles[id])).addTo(m);
+  const beside = cardBeside(), at = B.battles[id].lnglat;
+  // beside, the card clears the battle's label, which hangs centred under the marker
+  const mark = beside && ML.markers['battle:' + id]?.getElement();
+  const offset = mark ? Math.max(30, mark.getBoundingClientRect().width / 2 + 12) : 30;
+  const popup = new maplibregl.Popup({ offset, maxWidth: 'none', focusAfterOpen: false, anchor: beside ? 'left' : 'bottom', closeOnClick: false }).setLngLat(at).setDOMContent(battleCard(B.battles[id])).addTo(m);
   battlePopup = popup;
   // the card's own × closes it; that counts as the reader closing it, so the map slides back
   popup.on('close', () => { if (battlePopup !== popup) return; battlePopup = null; restoreNudge(); });
-  // the card sits above the marker; if it still runs past the map's edge, slide the map so it fits
-  requestAnimationFrame(() => {
-    if (!battlePopup) return;
-    const r = battlePopup.getElement().getBoundingClientRect(), s = $('map').getBoundingClientRect(), pad = 12;
+  // beside: the map slides so the battle and its card sit together in the middle, the battle left of centre.
+  // above: the map slides only if the card runs past its edge
+  const place = () => {
+    if (battlePopup !== popup) return;
+    const r = popup.getElement().getBoundingClientRect(), s = $('map').getBoundingClientRect(), pad = 12;
     let dx = 0, dy = 0;
-    if (r.top < s.top + pad) dy = r.top - (s.top + pad); else if (r.bottom > s.bottom - pad) dy = r.bottom - (s.bottom - pad);
-    if (r.left < s.left + pad) dx = r.left - (s.left + pad); else if (r.right > s.right - pad) dx = r.right - (s.right - pad);
-    if (!dx && !dy) return;
-    // phones remember where the map was, to slide back when the reader closes the card
-    if (matchMedia('(max-width:900px)').matches) ML.beforeNudge = m.getCenter();
+    if (beside) {
+      const p = m.project(at), span = r.right - s.left - p.x;
+      dx = p.x - (s.width - span) / 2; dy = p.y - s.height / 2;
+    } else {
+      if (r.top < s.top + pad) dy = r.top - (s.top + pad); else if (r.bottom > s.bottom - pad) dy = r.bottom - (s.bottom - pad);
+      if (r.left < s.left + pad) dx = r.left - (s.left + pad); else if (r.right > s.right - pad) dx = r.right - (s.right - pad);
+    }
+    if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
+    // phones and the card beside the battle remember where the map was, to slide back when the reader closes the card
+    if (beside || matchMedia('(max-width:900px)').matches) ML.beforeNudge = m.getCenter();
     m.panBy([dx, dy], { duration: reduced ? 0 : 400 });
-  });
+  };
+  // the slide waits for the page's camera to land, so the two moves do not fight
+  requestAnimationFrame(() => { if (m.isMoving()) m.once('moveend', place); else place(); });
 }
 // restore: the reader closed the card, so undo the slide; a page change or a new card closes without it
 function closeBattle(restore = false){
