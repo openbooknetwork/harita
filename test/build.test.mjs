@@ -193,6 +193,22 @@ test('patterns finds families that look alike and fixes one with a pattern', asy
   assert.deepEqual(patterns({ root, log: quiet }), []);
 });
 
+test('a family with two zones on one page is a problem for check, a warning for the build, and --strict stops on it', async () => {
+  const root = copy();
+  fs.mkdirSync(path.join(root, `${STORY}/pages/030-kristnitaka/zones`));
+  fs.writeFileSync(path.join(root, `${STORY}/pages/030-kristnitaka/zones/east.geojson`), JSON.stringify({
+    type: 'Feature', properties: { family: 'settled', name: 'The east' },
+    geometry: { type: 'Polygon', coordinates: [[[-16, 64], [-14, 64], [-14, 65], [-16, 65], [-16, 64]]] },
+  }));
+  edit(root, `${STORY}/pages/030-kristnitaka/page.yaml`, 'zones: [island]', 'zones: [island, east]');
+  const problem = /030-kristnitaka: family "settled" has 2 zones on this page, island, east\. A family is one state/;
+  assert.ok(check({ root, story: 'settlement-of-iceland', log: quiet }).some(l => problem.test(l)));
+  const lines = [];
+  await make(root, { log: l => lines.push(l) });
+  assert.ok(lines.some(l => l.startsWith('  warning: ') && problem.test(l)), lines.join('\n'));
+  await assert.rejects(make(root, { strict: true }), /030-kristnitaka: family "settled" has 2 zones on this page/);
+});
+
 test('schema fills defaults and lists every bad field at once', async () => {
   const page = schema.check(schema.Page, { date: '930', title: 'x', bbox: [-25, 63, -13, 67] }, 'page.yaml');
   assert.deepEqual([page.zones, page.routes, page.markers, page.sources], [[], [], [], []]);

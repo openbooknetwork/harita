@@ -515,6 +515,21 @@ function readContent(p, storyDir, onProblem = null) {
     const moved = pages[i].include !== prev.include ? pages[i].include ?? prev.include : null;
     fail(where, `${pages[i].dir} starts ${pages[i].when.from}, before ${prev.dir} which starts ${prev.when.from}; ${moved ? `renumber ${moved} to move the battle` : 'fix the folder numbers or the when fields'}`);
   });
+  // A family is one state, so a page shows each family in one zone: two states of one family read as one state divided.
+  // check reports it, the build warns, and with --strict the build stops. A set of zones is named once, at its first page.
+  const named = new Set();
+  for (const pg of pages) {
+    const byFamily = {};
+    for (const z of pg.zones) if (zones[z]) (byFamily[zones[z].family] ??= []).push(z);
+    for (const [f, zs] of Object.entries(byFamily)) {
+      const at = pg.include ?? pg.dir, key = f + ' ' + [...zs].sort().join(' ');
+      if (zs.length < 2 || named.has(key)) continue;
+      named.add(key);
+      const msg = `${at}: family "${f}" has ${zs.length} zones on this page, ${zs.join(', ')}. A family is one state: give each state a family `
+        + 'of its own, and draw a state that shows as two zones as one zone';
+      if (onProblem) onProblem(path.join(root, at), msg, pg.id); else if (p.strict) fail(at, msg.slice(at.length + 2)); else warnings.push(msg);
+    }
+  }
   return { story, langs, defaultLang, T, entries, translations: report, tree, zones, routes, markers, battles, images, icons, pages, texts, firstImages, families, warnings, battleList,
     imageFolders: Object.values(folderImages), shippedImages: shipped, zoneFolders: Object.values(zoneFolders), coverImage };
 }

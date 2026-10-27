@@ -453,6 +453,9 @@ Zone colours belong to the families in `story.yaml`, not to the theme, so a stor
 across themes. A family can add a `pattern`, hatch, cross or dots, drawn in the family colour over the
 tint, for stories with more families than distinct colours. The build warns when two families that share a
 page have the same pattern and colours closer than 30 in CIELAB, in either the light or the dark variant.
+A family is one state, so a page shows each family in one zone: two states of one family read as one state
+divided. `harita check` reports a family with two zones on a page, the build warns about it, and `--strict`
+stops on it. Give each state a family of its own, and draw a state that shows as two zones as one zone.
 
 ```
 harita patterns          # list the pairs that look alike, per story
@@ -602,9 +605,7 @@ Drawing rules that follow from this:
 - Extend a zone into the sea freely. The coast comes from the clip.
 - Overlap a neighbour of higher priority on purpose, and only on the side where that neighbour is. The
   build trims the overlap along the neighbour's edge.
-- Zones of the same family that border each other should share the points of their common edge, as
-  state borders copied from one source do. Shapes that only nearly meet keep the gap or overlap they were
-  drawn with.
+- A page shows each family in one zone, see [Themes](#themes).
 - The build fails when a zone is left with land outside the clip or overlaps another family by more
   than 1 km². It lists pieces under 50 km² so a stray sliver is visible next to the real islands.
 
