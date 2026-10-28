@@ -27,17 +27,46 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 const colorVar = family => family ? `--z-${family}` : '--accent';
 // a route takes the colour of the family that travels it, else the theme's route colour
 const routeVar = id => B.routes[id].color ? colorVar(B.routes[id].color) : '--route';
-// the routes of one colour on a page are the legs of one march, numbered in the order the page lists them; they shade
-// from the first, mixed with the ink so it stands out on either theme, to the full colour of the last. tone is the
-// share of the colour in percent. A route without arrows marks a front or a border and keeps the full colour.
+// the routes of one colour on a page are the legs of one march, numbered in the order the page lists them. The last
+// has the full colour, the ones before it a lightness nearer the middle, where a colour keeps the most strength, the
+// earlier the more: shade is that share of LEG_SHADE. A route without arrows marks a front or a border and keeps the
+// full colour.
+const LEG_SHADE = 0.18;
+// a group the page lists in a list of its own, such as the columns of one army, is one leg
+const legOf = (page, id) => { const g = page.groups?.findIndex(ids => ids.includes(id)) ?? -1; return g < 0 ? id : 'group ' + g; };
 function routeLegs(page){
   const marches = {}, legs = {};
-  for (const id of page.routes) { legs[id] = { tone: 100, n: null }; if (B.routes[id].arrows) (marches[routeVar(id)] ??= []).push(id); }
-  for (const ids of Object.values(marches)) if (ids.length > 1) ids.forEach((id, i) => legs[id] = { tone: Math.round(40 + 60 * i / (ids.length - 1)), n: i + 1 });
+  for (const id of page.routes) {
+    legs[id] = { shade: 0, n: null }; if (!B.routes[id].arrows) continue;
+    const m = marches[routeVar(id)] ??= new Map(), leg = legOf(page, id); m.set(leg, [...(m.get(leg) ?? []), id]);
+  }
+  for (const m of Object.values(marches)) { const steps = [...m.values()]; if (steps.length > 1) steps.forEach((ids, i) => { for (const id of ids) legs[id] = { shade: (steps.length - 1 - i) / (steps.length - 1), n: i + 1 }; }); }
   return legs;
 }
-// two #rrggbb colours mixed as CSS color-mix(in srgb) mixes them, so the map and the legend agree
-const mixHex = (a, b, pct) => '#' + [1, 3, 5].map(i => Math.round(parseInt(a.slice(i, i + 2), 16) * pct / 100 + parseInt(b.slice(i, i + 2), 16) * (100 - pct) / 100).toString(16).padStart(2, '0')).join('');
+// #rrggbb to OKLCH and back: a leg keeps its hue and as much of its chroma as sRGB holds at its new lightness
+const toLinear = c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+const toGamma = c => c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055;
+function oklch(hex){
+  const [r, g, b] = [1, 3, 5].map(i => toLinear(parseInt(hex.slice(i, i + 2), 16) / 255));
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b), s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  const L = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, a = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s, bb = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+  return [L, Math.hypot(a, bb), Math.atan2(bb, a)];
+}
+function srgb(L, C, h){
+  const a = C * Math.cos(h), bb = C * Math.sin(h), l = (L + 0.3963377774 * a + 0.2158037573 * bb) ** 3, m = (L - 0.1055613458 * a - 0.0638541728 * bb) ** 3, s = (L - 0.0894841775 * a - 1.2914855480 * bb) ** 3;
+  return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s];
+}
+function lighten(hex, dL){
+  const [L, C, h] = oklch(hex), L2 = Math.min(0.92, Math.max(0.2, L + dL));
+  let rgb = srgb(L2, C, h);
+  for (let c = C; rgb.some(v => v < -0.001 || v > 1.001) && c > 0.001; c *= 0.92) rgb = srgb(L2, c, h);
+  return '#' + rgb.map(v => Math.round(toGamma(Math.min(1, Math.max(0, v))) * 255).toString(16).padStart(2, '0')).join('');
+}
+// a route's colour on a page: a light colour darker, a dark one lighter
+function legColor(id, leg){
+  const c = css(routeVar(id)); if (!leg.shade) return c;
+  return lighten(c, LEG_SHADE * leg.shade * (oklch(c)[0] > 0.55 ? -1 : 1));
+}
 // A 16 px tile in the family colour, drawn so it repeats without seams: hatch, cross or dots.
 function patternImage(kind, color){
   const s = 16, c = document.createElement('canvas'); c.width = c.height = s; const g = c.getContext('2d');
@@ -388,11 +417,11 @@ function freeCamera(on){
 function renderView(){
   for (const b of $('view').querySelectorAll('button')) b.setAttribute('aria-pressed', b.dataset.view === view);
 }
-// the page's routes and their arrows in their tones
+// the page's routes and their arrows in their shades
 function routeColors(page){
-  const legs = routeLegs(page), ink = css('--ink');
+  const legs = routeLegs(page);
   for (const id of page.routes) {
-    const c = mixHex(css(routeVar(id)), ink, legs[id].tone);
+    const c = legColor(id, legs[id]);
     ML.map.setPaintProperty('r-' + id, 'line-color', c);
     if (B.routes[id].arrows) ML.map.setLayoutProperty('ra-' + id, 'icon-image', arrowFor(c));
     ML.legs[id]?.getElement().style.setProperty('--rc', c);
@@ -420,7 +449,7 @@ function mapApply(page, first){
   ML.hl = null; $('hl-label').hidden = true;
   for (const id in B.zones) zoneShow(id, page.zones.includes(id));
   for (const id in B.routes) routeWidth(id, false);
-  const fresh = page.routes.filter(id => !ML.shown[id]);
+  const fresh = page.routes.filter(id => !ML.shown[id]), freshLegs = [...new Set(fresh.map(id => legOf(page, id)))];
   legMarkers(page);
   for (const id in B.routes) {
     const on = page.routes.includes(id); const src = m.getSource('r-' + id); const coords = B.routes[id].coordinates;
@@ -428,7 +457,7 @@ function mapApply(page, first){
     if (!on) { src.setData(routeFeature(id, [])); ML.shown[id] = false; continue; }
     if (ML.shown[id]) { src.setData(routeFeature(id, coords)); ML.legs[id]?.getElement().classList.add('in'); continue; }
     ML.shown[id] = true;
-    const t0 = performance.now() + (first ? 0 : DUR * 0.6) + fresh.indexOf(id) * DUR, len = DUR || 1;
+    const t0 = performance.now() + (first ? 0 : DUR * 0.6) + freshLegs.indexOf(legOf(page, id)) * DUR, len = DUR || 1;
     const tick = now => { const t = Math.min(1, Math.max(0, (now - t0) / len)); src.setData(routeFeature(id, sliceRoute(coords, t))); if (ML.legs[id] && t >= ML.legs[id].at) ML.legs[id].getElement().classList.add('in'); if (t < 1) ML.anim[id] = requestAnimationFrame(tick); };
     ML.anim[id] = requestAnimationFrame(tick);
   }
@@ -580,7 +609,7 @@ function renderStory(p){
   story.scrollTop = 0;
   const legs = routeLegs(p);
   legend.innerHTML = p.zones.map(z => `<button type="button" class="lg" data-hl="zone:${esc(z)}" aria-pressed="false"><i style="${patternCss(B.zones[z].family)}"></i>${esc(L(B.zones[z].name))}</button>`).join('')
-    + p.routes.map(r => `<button type="button" class="lg" data-hl="route:${esc(r)}" aria-pressed="false" style="--rc:color-mix(in srgb, var(${routeVar(r)}) ${legs[r].tone}%, var(--ink))"><i class="r ${B.routes[r].style}${B.routes[r].arrows ? ' arrow' : ''}"></i>${legs[r].n ? `<span class="legno">${legs[r].n}</span>` : ''}${esc(L(B.routes[r].name))}</button>`).join('');
+    + p.routes.map(r => `<button type="button" class="lg" data-hl="route:${esc(r)}" aria-pressed="false" style="--rc:${legColor(r, legs[r])}"><i class="r ${B.routes[r].style}${B.routes[r].arrows ? ' arrow' : ''}"></i>${legs[r].n ? `<span class="legno">${legs[r].n}</span>` : ''}${esc(L(B.routes[r].name))}</button>`).join('');
   legend.hidden = !legend.innerHTML;
   $('legend-btn').hidden = legend.hidden;
   renderPeek();
@@ -599,7 +628,9 @@ function setLang(l, fromRoute){
   if (B.labels && ML.map && ML.ready) ML.map.setLayoutProperty('labels', 'text-field', ['get', lang]);
   renderChrome(); renderNav(); renderStory(here()); mapMarkers(here(), true); if (battlePopup && here().battle) openBattle(here().battle); if (!fromRoute) writeRoute(false);
 }
-function setPalette(id){ palette = id; applyPalette(id); $('theme').value = id; mapTheme(); }
+function setPalette(id){ palette = id; applyPalette(id); $('theme').value = id; mapTheme(); legendColors(here()); }
+// the legend's route lines in the shades of the current theme
+function legendColors(page){ const legs = routeLegs(page); for (const b of legend.querySelectorAll('[data-hl^="route:"]')) b.style.setProperty('--rc', legColor(b.dataset.hl.slice(6), legs[b.dataset.hl.slice(6)])); }
 // the back and forward buttons: the path names a language and a page, or a language alone for the overview
 addEventListener('popstate', () => {
   const [l, page] = pathParts(), i = page ? pageIndex(page) : -1;

@@ -429,6 +429,8 @@ function readContent(p, storyDir, onProblem = null) {
   function readPage(dir, s) {
     const file = path.join(dir, 'page.yaml'), at = rel(file), own = idOf(path.basename(dir)), pid = s.pageId(own);
     const pg = readYaml(file, Page);
+    // routes in a list of their own were travelled at the same time, such as the columns of one army
+    const groups = pg.routes.filter(Array.isArray); pg.routes = pg.routes.flat();
     const texts = s.texts[pid] = {}, firstImages = s.firstImages[pid] = {};
     const need = (ok, msg) => attempt(dir, () => ok || fail(at, msg));
     if (s.battle && pg.zones.length) need(false, 'a battle page has no zones, the story that includes the battle shows its own with zones in include.yaml');
@@ -473,7 +475,7 @@ function readContent(p, storyDir, onProblem = null) {
     const mapSources = Object.fromEntries(langs.map(l => [l, pg.map_sources.map((x, i) => ({ text: mapSourceTexts[i][l], url: x.url ?? null }))]));
     const emblem = pg.emblem ? attempt(dir, () => emblemFor(root, pg.emblem, `${at} emblem`, { families: s.families, fam: s.fam, T: s.T, pid: own })) : null;
     return { id: pid, dir: rel(dir), when, date: s.T(pg.date, `pages.${own}.date`), title: s.T(pg.title, `pages.${own}.title`),
-      bbox: pg.bbox, camera, maxZoom: s.maxZoom, zones: pg.zones, routes: pg.routes.map(s.ns), markers: pg.markers.map(s.ns), battle, html, sources, mapSources,
+      bbox: pg.bbox, camera, maxZoom: s.maxZoom, zones: pg.zones, routes: pg.routes.map(s.ns), ...(groups.length ? { groups: groups.map(g => g.map(s.ns)) } : {}), markers: pg.markers.map(s.ns), battle, html, sources, mapSources,
       emblem: emblem?.fc ?? null, emblemNames: emblem?.names ?? {} };
   }
 

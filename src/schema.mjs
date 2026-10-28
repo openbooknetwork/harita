@@ -74,7 +74,7 @@ export const Page = z.object({
   when: z.union([When, z.object({ from: When, to: When.optional() }).strict()]).optional(),
   bbox: Bbox,
   zones: z.array(Id).default([]),
-  routes: z.array(Id).default([]),
+  routes: z.array(z.union([Id, z.array(Id).min(2)])).default([]), // a list in the list: routes travelled at once, one leg
   markers: z.array(Id).default([]),
   battle: z.union([Id, z.literal(true)]).optional(), // one battle per page keeps the map readable, and a battle's own page writes true
   camera: z.union([z.literal(false), Camera]).optional()

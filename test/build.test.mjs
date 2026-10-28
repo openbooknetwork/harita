@@ -1006,6 +1006,17 @@ test('a route takes the colour of the family it names', async () => {
   await assert.rejects(make(bad), /pillars\.geojson: route "pillars" uses unknown family "norse"/);
 });
 
+test('routes in a list of their own are one leg, travelled at once', async () => {
+  const root = copy(), dir = path.join(root, STORY, 'shared/routes');
+  const route = JSON.parse(fs.readFileSync(path.join(dir, 'pillars.geojson'), 'utf8'));
+  route.properties.id = 'column'; route.properties.name = { en: 'A second column' }; fs.writeFileSync(path.join(dir, 'column.geojson'), JSON.stringify(route));
+  edit(root, `${STORY}/pages/010-landnam/page.yaml`, 'routes: [pillars]', 'routes: [[pillars, column]]');
+  await make(root);
+  const page = bundleOf(root).pages.find(p => p.id === 'landnam');
+  assert.deepEqual(page.routes, ['pillars', 'column']);
+  assert.deepEqual(page.groups, [['pillars', 'column']]);
+});
+
 // --- shared zones, and the zones of different stories that look like one region ---
 const ISLAND = `${STORY}/pages/020-althing/zones/island.geojson`;
 // a second story, a copy of the example under another id

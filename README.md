@@ -445,8 +445,8 @@ A project adds its own under `themes:` in `site.yaml`, same shape as the built i
 themes:
   olive:
     name: Olive                     # other languages: themes.olive in i18n/ui/<lang>.yaml
-    light: { paper: "#f2f3ea", paper2: "#e4e7d6", sea: "#d3dbd0", ink: "#242a1f", ink2: "#5f6a55", rule: "#bcc3ad", accent: "#a3362b", panel: "#fafbf3", route: "#8c2a21", border: "#75806a" }
-    dark:  { paper: "#1d2119", paper2: "#2c3226", sea: "#141811", ink: "#e7e9df", ink2: "#a3aa97", rule: "#414838", accent: "#e2685b", panel: "#242a1f", route: "#ea766a", border: "#8d9681" }
+    light: { paper: "#f2f3ea", paper2: "#e4e7d6", sea: "#d3dbd0", ink: "#242a1f", ink2: "#5f6a55", rule: "#bcc3ad", accent: "#a3362b", panel: "#fafbf3", route: "#5f6a55", border: "#75806a" }
+    dark:  { paper: "#1d2119", paper2: "#2c3226", sea: "#141811", ink: "#e7e9df", ink2: "#a3aa97", rule: "#414838", accent: "#e2685b", panel: "#242a1f", route: "#a3aa97", border: "#8d9681" }
 ```
 
 Zone colours belong to the families in `story.yaml`, not to the theme, so a story keeps its zone colours
@@ -675,12 +675,17 @@ pointing the way it was travelled, from its first point to its last. Set `"arrow
 marks a front or a border rather than a movement.
 
 `color` names the family that travels the route, such as `"color": "ottomans"`, and the line, its chevrons and
-its legend entry take that family's colour. A route without it takes the theme's `route` colour.
+its legend entry take that family's colour. A route without it takes the theme's `route` colour, the grey of `ink2` in
+the themes harita ships, for a route that belongs to no one side, such as a trade route.
 
 The routes of one colour on a page are the legs of one march. When a march has two legs or more, each leg shows its
 number at its start, in the order the page lists them, on the map and in the legend. The last leg has the full
-colour, and the ones before it are mixed with the theme's ink, the earlier the more. A route with `"arrows": false`
+colour, and the ones before it are lighter or darker, the earlier the more, keeping their hue. A route with `"arrows": false`
 is no leg and keeps the full colour.
+
+Routes travelled at the same time, such as the columns of one army, go in a list of their own in the page's
+`routes`: `routes: [[column-west, column-east], pursuit]`. They draw together and count as one leg, with one number
+and one shade.
 
 A journey out and back is two routes, so each leg keeps its own arrows. Give the return an `offset` in pixels,
 for example `"offset": 5`, and it runs beside the way out instead of on top of it; positive values shift
@@ -863,7 +868,8 @@ writePlan('pages/040-second-war/010-invasion/050-cannae/020-cannae-deployment', 
 ```
 
 `writePlan` sets the page's `emblem` and `bbox`, writes its own markers to `markers.yaml` and its routes to
-`routes/`, and sets the `markers` and `routes` lists. `show` adds markers defined elsewhere. The page keeps
+`routes/`, and sets the `markers` and `routes` lists. `show` adds markers defined elsewhere. Routes next to each
+other with the same `group`, such as `group: 'columns'`, go in the `routes` list as one group. The page keeps
 every other key and its comments.
 
 `harita coast <country> <w> <s> <e> <n>` prints the coast the map draws inside a box, as `[lon,lat]` points,

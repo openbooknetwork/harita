@@ -3,25 +3,25 @@
 # Names are interface strings: themes.<id> in src/i18n/<lang>.yaml, or i18n/ui/<lang>.yaml in a project.
 # land lists tints for the countries, atlas style; a theme without it paints every country paper2.
 cool:
-  light: { paper: "#f7f7f5", paper2: "#eef0ea", sea: "#d8e0e6", ink: "#1f2328", ink2: "#5b6470", rule: "#c9cfd6", accent: "#c0392b", panel: "#ffffff", route: "#b03024", border: "#7a848f",
+  light: { paper: "#f7f7f5", paper2: "#eef0ea", sea: "#d8e0e6", ink: "#1f2328", ink2: "#5b6470", rule: "#c9cfd6", accent: "#c0392b", panel: "#ffffff", route: "#5b6470", border: "#7a848f",
            land: ["#e6e8d6", "#e2e6ea", "#ece2d6", "#dfe8dc", "#eadfe0", "#e8e4d2"] }
-  dark:  { paper: "#15181c", paper2: "#262b31", sea: "#0f1317", ink: "#e6e8eb", ink2: "#9aa3ad", rule: "#3a414a", accent: "#e8655a", panel: "#1c2026", route: "#ef7a70", border: "#8a949e",
+  dark:  { paper: "#15181c", paper2: "#262b31", sea: "#0f1317", ink: "#e6e8eb", ink2: "#9aa3ad", rule: "#3a414a", accent: "#e8655a", panel: "#1c2026", route: "#9aa3ad", border: "#8a949e",
            land: ["#2b3128", "#262d36", "#332c27", "#263229", "#312a2e", "#302f26"] }
 mono:
-  light: { paper: "#ffffff", paper2: "#f0f0f0", sea: "#e2e2e2", ink: "#111111", ink2: "#666666", rule: "#d0d0d0", accent: "#c8102e", panel: "#fafafa", route: "#c8102e", border: "#777777" }
-  dark:  { paper: "#0e0e0e", paper2: "#232323", sea: "#050505", ink: "#f2f2f2", ink2: "#a0a0a0", rule: "#333333", accent: "#ff4d5e", panel: "#161616", route: "#ff4d5e", border: "#8c8c8c" }
+  light: { paper: "#ffffff", paper2: "#f0f0f0", sea: "#e2e2e2", ink: "#111111", ink2: "#666666", rule: "#d0d0d0", accent: "#c8102e", panel: "#fafafa", route: "#666666", border: "#777777" }
+  dark:  { paper: "#0e0e0e", paper2: "#232323", sea: "#050505", ink: "#f2f2f2", ink2: "#a0a0a0", rule: "#333333", accent: "#ff4d5e", panel: "#161616", route: "#a0a0a0", border: "#8c8c8c" }
 navy:
-  light: { paper: "#0f1a2b", paper2: "#c9bda0", sea: "#0b1422", ink: "#f1e9d6", ink2: "#a9b2c2", rule: "#2c3b55", accent: "#f0a04b", panel: "#162339", route: "#f0a04b", border: "#5c6a80",
+  light: { paper: "#0f1a2b", paper2: "#c9bda0", sea: "#0b1422", ink: "#f1e9d6", ink2: "#a9b2c2", rule: "#2c3b55", accent: "#f0a04b", panel: "#162339", route: "#a9b2c2", border: "#5c6a80",
            land: ["#c9bda0", "#bfc3a0", "#c7b396", "#b8bfa8", "#cbb8a6", "#c2bb9a"] }
-  dark:  { paper: "#0f1a2b", paper2: "#c9bda0", sea: "#0b1422", ink: "#f1e9d6", ink2: "#a9b2c2", rule: "#2c3b55", accent: "#f0a04b", panel: "#162339", route: "#f0a04b", border: "#5c6a80",
+  dark:  { paper: "#0f1a2b", paper2: "#c9bda0", sea: "#0b1422", ink: "#f1e9d6", ink2: "#a9b2c2", rule: "#2c3b55", accent: "#f0a04b", panel: "#162339", route: "#a9b2c2", border: "#5c6a80",
            land: ["#c9bda0", "#bfc3a0", "#c7b396", "#b8bfa8", "#cbb8a6", "#c2bb9a"] }
 parchment:
-  light: { paper: "#e9ebe6", paper2: "#dfe2da", sea: "#cfd7d3", ink: "#262b28", ink2: "#5c645f", rule: "#b8beb8", accent: "#9c2f2f", panel: "#f1f2ee", route: "#8a2525", border: "#6f7873",
+  light: { paper: "#e9ebe6", paper2: "#dfe2da", sea: "#cfd7d3", ink: "#262b28", ink2: "#5c645f", rule: "#b8beb8", accent: "#9c2f2f", panel: "#f1f2ee", route: "#5c645f", border: "#6f7873",
            land: ["#dde2cf", "#d8e0dc", "#e3dccd", "#d5e0d2", "#e0d8d6", "#dcdccb"] }
-  dark:  { paper: "#22262a", paper2: "#30363b", sea: "#171b1f", ink: "#e3e6e2", ink2: "#a3aaa6", rule: "#454c51", accent: "#d9605e", panel: "#1c2024", route: "#e06d6b", border: "#8f9893",
+  dark:  { paper: "#22262a", paper2: "#30363b", sea: "#171b1f", ink: "#e3e6e2", ink2: "#a3aaa6", rule: "#454c51", accent: "#d9605e", panel: "#1c2024", route: "#a3aaa6", border: "#8f9893",
            land: ["#333a2f", "#2e363e", "#3a342d", "#2e3a33", "#383037", "#36362c"] }
 sepia:
-  light: { paper: "#e6e1d2", paper2: "#ddd7c6", sea: "#cfd6d2", ink: "#2a2823", ink2: "#5d5950", rule: "#b9b2a0", accent: "#a3282b", panel: "#efebe0", route: "#8c1d1f", border: "#6d665a",
+  light: { paper: "#e6e1d2", paper2: "#ddd7c6", sea: "#cfd6d2", ink: "#2a2823", ink2: "#5d5950", rule: "#b9b2a0", accent: "#a3282b", panel: "#efebe0", route: "#5d5950", border: "#6d665a",
            land: ["#dcd4b8", "#d3d6c2", "#e0d0bd", "#cfd6c4", "#ddd0c8", "#d8d6b9"] }
-  dark:  { paper: "#2a2823", paper2: "#34312a", sea: "#1d2024", ink: "#e7e1d1", ink2: "#aaa392", rule: "#4e4a40", accent: "#d9565a", panel: "#23211c", route: "#e0666a", border: "#9a9283",
+  dark:  { paper: "#2a2823", paper2: "#34312a", sea: "#1d2024", ink: "#e7e1d1", ink2: "#aaa392", rule: "#4e4a40", accent: "#d9565a", panel: "#23211c", route: "#aaa392", border: "#9a9283",
            land: ["#38352a", "#30352e", "#3b322a", "#2e3630", "#38302e", "#353426"] }

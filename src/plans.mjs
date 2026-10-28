@@ -60,7 +60,10 @@ export function writePlan(story, pageDir, { emblem, markers, show = [], routes, 
       const props = { name: r.name, style: r.style ?? 'solid', arrows: r.arrows ?? true, ...(r.offset ? { offset: r.offset } : {}), ...(r.color ? { color: r.color } : {}) };
       fs.writeFileSync(path.join(dir, 'routes', id + '.geojson'), JSON.stringify({ type: 'Feature', properties: props, geometry: { type: 'LineString', coordinates: r.path.map(q => q.map(r5)) } }) + '\n');
     }
-    setKey('routes', `[${Object.keys(routes).join(', ')}]`);
+    // routes with the same group next to each other were travelled at once: the page lists them as one inner list
+    const legs = [];
+    for (const [id, r] of Object.entries(routes)) { const last = legs.at(-1); if (r.group && last?.group === r.group) last.ids.push(id); else legs.push({ group: r.group, ids: [id] }); }
+    setKey('routes', `[${legs.map(l => l.ids.length > 1 ? `[${l.ids.join(', ')}]` : l.ids[0]).join(', ')}]`);
   }
   fs.writeFileSync(file, text);
 }
