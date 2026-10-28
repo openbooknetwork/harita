@@ -15,7 +15,7 @@ import { alikePairs, describe } from './palette.mjs';
 import { loadCatalogues, translator, flatten, unflatten } from './i18n.mjs';
 import { coverage, packZones } from './coverage.mjs';
 import { terrainPlan, tileKeys, tileKey, terrainTiles, openZoom } from './terrain.mjs';
-import { esc, ordinals, siteContext, storyFiles, siteFiles } from './pages.mjs';
+import { esc, ordinals, PLACE, siteContext, storyFiles, siteFiles } from './pages.mjs';
 import { libraryItems, storyFolders, isImage, isBattle, isZone } from './folders.mjs';
 import { world } from './world.mjs';
 import { scriptPaths, writeVendor } from './vendor.mjs';
@@ -179,6 +179,10 @@ function cleanZones({ ordered, prio, together, smoothing, where, log }) {
   return { shapes, lines };
 }
 
+// whether a text names a place by its label, or by the label without a part in brackets, at the start of a word, so a
+// Turkish suffix such as Gelibolu’ya counts
+const mentions = (text, label) => [label, label.replace(/\s*\(.*\)$/, '')].some(l => l && new RegExp(`(?<![\\p{L}\\p{N}])${l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'u').test(text));
+
 // The story's content as text, without geometry: story.yaml, the page tree with each page's text and emblem, and the
 // files they use, battles included. onProblem(folder, message, page id) takes each problem, else the first throws.
 function readContent(p, storyDir, onProblem = null) {
@@ -209,6 +213,8 @@ function readContent(p, storyDir, onProblem = null) {
   // the bundle's colour table: the story's families, then each battle's as <battle>_<family>
   const families = { ...story.families };
   const texts = {}, firstImages = {};
+  // per text file, the page's markers its text names by their labels without a link, for harita check --places
+  const unlinked = [];
 
   // the items of a library at any depth, by their folder names as written, so a reference finds the same folder on
   // every file system
@@ -466,7 +472,16 @@ function readContent(p, storyDir, onProblem = null) {
         firstImages[lang] ??= id;
         return head + id + tail;
       });
-      const md = texts[lang].replace(/^@image\s+(\S+)\s*$/gm, (_, imgId) => `\n${figure(imgId, lang)}\n`);
+      const md = texts[lang].replace(/^@image\s+(\S+)\s*$/gm, (_, imgId) => `\n${figure(imgId, lang)}\n`)
+        .replace(PLACE, (_, name, id) => {
+          if (!pg.markers.includes(id)) attempt(dir, () => fail(rel(textFile), `[${name}](@${id}) links to the marker "${id}", add it to the markers of page.yaml or link one the page shows`));
+          return `<span class="place" data-marker="${esc(s.ns(id))}" tabindex="0">${name}</span>`;
+        });
+      if (!fallback) {
+        const linked = new Set([...source.matchAll(PLACE)].map(m => m[2])), prose = source.replace(PLACE, ' ');
+        const names = pg.markers.filter(m => !linked.has(m) && markers[s.ns(m)]).map(m => [m, markers[s.ns(m)].label[lang]]).filter(([, label]) => label && mentions(prose, label));
+        if (names.length) unlinked.push({ pageId: pid, file: rel(textFile), names: names.map(([m, label]) => `${label} (@${m})`) });
+      }
       const out = marked.parse(ordinals(md));
       html[lang] = fallback ? `<div lang="${s.defaultLang}" dir="${textDir(s.defaultLang)}">${out}</div>` : out;
     });
@@ -535,7 +550,7 @@ function readContent(p, storyDir, onProblem = null) {
       if (onProblem) onProblem(path.join(root, at), msg, pg.id); else if (p.strict) fail(at, msg.slice(at.length + 2)); else warnings.push(msg);
     }
   }
-  return { story, langs, defaultLang, T, entries, translations: report, tree, zones, routes, markers, battles, images, icons, pages, texts, firstImages, families, warnings, battleList,
+  return { story, langs, defaultLang, T, entries, translations: report, tree, zones, routes, markers, battles, images, icons, pages, texts, firstImages, families, warnings, battleList, unlinked,
     imageFolders: Object.values(folderImages), shippedImages: shipped, zoneFolders: Object.values(zoneFolders), coverImage };
 }
 
@@ -770,7 +785,8 @@ export function pageZoneFamilies({ root, storyDir }) {
 // Every problem in one story's content, without the geometry: the pages, their texts and emblems, and the files
 // they use. pages limits the check to those page ids and to the files outside any page. Returns the problems, [] when
 // there are none.
-export function checkStory({ root = process.cwd(), story, pages = [], log = console.log } = {}) {
+// places lists, per text file, the markers its page shows that the text names without a link
+export function checkStory({ root = process.cwd(), story, pages = [], places = false, log = console.log } = {}) {
   const p = project(root, log);
   const stories = storyNames(p);
   if (!stories.includes(story)) fail('content/', `"${story}" is not a story folder, the stories are ${stories.join(', ')}`);
@@ -779,7 +795,8 @@ export function checkStory({ root = process.cwd(), story, pages = [], log = cons
   const inScope = pageId => !pages.length || pageId == null || pages.includes(pageId);
   const problems = [];
   try {
-    const { tree } = readContent(p, storyDir, (dir, msg, pageId) => { if (inScope(pageId)) problems.push(msg); });
+    const { tree, unlinked } = readContent(p, storyDir, (dir, msg, pageId) => { if (inScope(pageId)) problems.push(msg); });
+    if (places) for (const u of unlinked) if (inScope(u.pageId)) log(`${u.file}: ${u.names.join(', ')}`);
     const ids = new Set(), collect = nodes => { for (const n of nodes) n.type === 'page' ? ids.add(n.id) : collect(n.children); };
     collect(tree);
     for (const id of pages) if (!ids.has(id)) problems.push(`${p.rel(storyDir)}/pages: no page "${id}"`);

@@ -144,10 +144,18 @@ aside.story li{margin-bottom:.286rem}
 aside.story figure{margin:1rem 0;max-width:62ch}
 aside.story figure img{display:block;width:100%;border:1px solid var(--rule);cursor:zoom-in}
 aside.story figcaption{font-size:.857rem;color:var(--ink-2);margin-top:.429rem;line-height:1.4}
+/* a place the text names: pointing at it pops its marker on the map, pointing at the marker tints it */
+aside.story .place{text-decoration:underline dotted var(--c,var(--ink-2));text-decoration-thickness:1.5px;text-underline-offset:.2em;border-radius:2px;cursor:default}
+aside.story .place:hover,aside.story .place:focus-visible,aside.story .place.on{text-decoration-style:solid;background:color-mix(in srgb,var(--c,var(--accent)) 18%,transparent);outline:none}
 aside.story figcaption small{display:block;font-size:.786rem;color:var(--ink-2);opacity:.8}
 /* markers */
 .mk{display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none;transform:translate(0,-50%)}
-.mk .wrap{position:relative;display:flex;flex-direction:column;align-items:center}
+.mk .wrap{position:relative;display:flex;flex-direction:column;align-items:center;transform-origin:50% 100%;transition:transform .15s}
+.mk.named .wrap{pointer-events:auto}
+/* the marker of the place the reader points at in the text: larger, above the others, with a ring in its colour */
+.mk.pop{z-index:1}
+.mk.pop .wrap{transform:scale(1.25)}
+.mk.pop .wrap>.ic:not(.badge),.mk.pop .ph{box-shadow:0 0 0 .286rem color-mix(in srgb,var(--c,var(--accent)) 40%,transparent),0 1px 4px rgba(0,0,0,.35)}
 .mk .ic{width:2rem;height:2rem;border-radius:50%;background:var(--panel);border:2px solid var(--c,var(--accent));color:var(--c,var(--accent));
   display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.3)}
 .mk .ic svg{width:1.143rem;height:1.143rem}
@@ -250,6 +258,8 @@ aside.story figcaption small{display:block;font-size:.786rem;color:var(--ink-2);
   .peek{display:block;position:absolute;inset-inline:.571rem;bottom:.571rem;z-index:3;background:var(--panel);border:1px solid var(--rule);border-radius:8px;
     box-shadow:0 2px 10px rgba(0,0,0,.25);padding-block:.714rem;padding-inline:.857rem 2.857rem;cursor:pointer}
   .peek[hidden]{display:none}
+  /* the text and the map take turns, so a place reads as plain text */
+  aside.story .place,aside.story .place:is(:hover,:focus-visible,.on){text-decoration:none;background:none}
   .peek p{margin:0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;line-height:1.45}
   .peek .more{display:inline-block;margin-top:.286rem;color:var(--accent);font-weight:600;font-size:.929rem}
   .peek .close{position:absolute;top:.286rem;inset-inline-end:.286rem;width:max(44px,3.143rem);height:max(44px,3.143rem);border:0;background:none;color:var(--ink-2);font-size:1.429rem;line-height:1;cursor:pointer}
@@ -295,7 +305,7 @@ aside.story figcaption small{display:block;font-size:.786rem;color:var(--ink-2);
   nav.pages .sheet-close{width:auto;flex:none;text-align:center;min-height:max(44px,3.143rem);background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:6px;padding:0 .857rem;font:inherit;cursor:pointer}
   nav.pages button,nav.pages a.pg{min-height:max(44px,3.143rem)}
 }
-@media (prefers-reduced-motion: reduce){ *{transition:none!important} }
+@media (prefers-reduced-motion: reduce){ *{transition:none!important} .mk.pop .wrap{transform:none} }
 </style>
 <!-- the saved layout before the first paint, so the page does not move once the script runs -->
 <script>try { const l = localStorage.getItem('layout'); if (l === 'left' || l === 'right') document.documentElement.dataset.layout = l; } catch {}</script>

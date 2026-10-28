@@ -194,6 +194,22 @@ test('patterns finds families that look alike and fixes one with a pattern', asy
   assert.deepEqual(patterns({ root, log: quiet }), []);
 });
 
+test('a place links to a marker the page shows, check lists the places named without a link, and the Markdown keeps the name', async () => {
+  const root = copy(), text = `${STORY}/pages/020-althing/text/en.md`;
+  await make(root);
+  const html = bundleOf(root).pages.find(p => p.id === 'althing').html.en;
+  assert.match(html, /<span class="place" data-marker="thingvellir" tabindex="0">Þingvellir<\/span>/);
+  assert.match(fs.readFileSync(path.join(root, 'dist/settlement-of-iceland/en.md'), 'utf8'), /on the plain at Þingvellir, where/);
+  const places = () => { const lines = []; check({ root, story: 'settlement-of-iceland', places: true, log: l => lines.push(l) }); return lines; };
+  assert.deepEqual(places(), []);
+  append(root, text, 'Chieftains rode in from Reykjavík.');
+  assert.deepEqual(places(), [`${STORY}/pages/020-althing/text/en.md: Reykjavík (@reykjavik)`]);
+  edit(root, text, 'from Reykjavík.', 'from [Reykjavík](@reykjavik) and [Borg](@borg).');
+  assert.deepEqual(places(), []);
+  assert.deepEqual(check({ root, story: 'settlement-of-iceland', log: quiet }),
+    [`${STORY}/pages/020-althing/text/en.md: [Borg](@borg) links to the marker "borg", add it to the markers of page.yaml or link one the page shows`]);
+});
+
 test('a family with two zones on one page is a problem for check, a warning for the build, and --strict stops on it', async () => {
   const root = copy();
   fs.mkdirSync(path.join(root, `${STORY}/pages/030-kristnitaka/zones`));

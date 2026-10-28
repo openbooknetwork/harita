@@ -528,6 +528,11 @@ the text. A line that opens with a number and a full stop stays text, as Turkish
 text has no numbered lists.
 Clicking a figure, or a marker's photo on the map, opens it large over the map.
 
+A link to a marker id names a place the page marks: `[Gelibolu’ya](@gallipoli)`. The link text is free, so a
+Turkish suffix stays in it. Pointing at the place, or reaching it with the Tab key, grows its marker and rings it in
+its colour, and pointing at the marker tints the place in the text. On a phone, where the text and the map take turns,
+the place reads as plain text. The id is one of the page's `markers`.
+
 ### Images
 
 Every image is a folder of its own, so a story, its pages and its battles store one image however often they show
@@ -926,4 +931,4 @@ elevation tiles in the asset store, see [Workflow for a story](#workflow-for-a-s
 While writing, `npx harita check <id> [page id ...]` reads the story's pages, their texts, images, markers,
 battles, routes and emblems, and prints every problem it finds, or `ok`. It leaves out the zone geometry and
 the elevation tiles, so it takes about a second. Page ids narrow it to those pages and the files outside any
-page.
+page. With `--places` it also lists, per text file, the page's markers whose label the text names without a link.

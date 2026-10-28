@@ -480,11 +480,23 @@ function mapMarkers(page, redraw){
     const src = isBattle ? B.battles[id.slice(7)] : B.markers[id];
     const data = isBattle ? { icon: 'swords', color: null, image: null, label: src.name, note: src.date } : src;
     const el = markerEl(data, isBattle);
+    if (!isBattle) { const wrap = el.querySelector('.wrap'); wrap.onmouseenter = () => tintPlaces(id, true); wrap.onmouseleave = () => tintPlaces(id, false); }
     if (isBattle) el.onclick = e => { e.stopPropagation(); openBattle(id.slice(7)); }; // the map would otherwise close the popup on the same click
     const mk = new maplibregl.Marker({ element: el, anchor:'top' }).setLngLat(src.lnglat).addTo(m);
     ML.markers[id] = mk; requestAnimationFrame(() => requestAnimationFrame(() => mk.getElement().classList.add('in')));
   });
+  linkPlaces();
 }
+// ---------- places: a place the text names and its marker show each other ----------
+// The markers the text names take the pointer, the others let it through to the zones and routes under them. A phone
+// shows the text or the map, so there the places are plain text.
+function linkPlaces(){
+  const places = [...story.querySelectorAll('.place')], named = new Set(phone.matches ? [] : places.map(el => el.dataset.marker));
+  for (const el of places) phone.matches ? el.removeAttribute('tabindex') : el.tabIndex = 0;
+  for (const id in ML.markers) { const el = ML.markers[id].getElement(); el.classList.toggle('named', named.has(id)); el.classList.remove('pop'); }
+}
+const popMarker = (id, on) => ML.markers[id]?.getElement().classList.toggle('pop', on);
+const tintPlaces = (id, on) => { for (const el of story.querySelectorAll(`.place[data-marker="${CSS.escape(id)}"]`)) el.classList.toggle('on', on); };
 
 // ---------- panes ----------
 const navEl = $('nav'), story = $('story'), legend = $('legend');
@@ -604,9 +616,11 @@ function renderStory(p){
   } else {
     const sources = p.sources[lang].length ? `<h3>${esc(T().sources)}</h3><ol>${p.sources[lang].map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '';
     story.innerHTML = `<div class="date">${esc(L(p.date))}</div><h2>${esc(L(p.title))}</h2>${p.html[lang]}${sources}`;
+    for (const el of story.querySelectorAll('.place')) el.style.setProperty('--c', `var(${colorVar(B.markers[el.dataset.marker]?.color)})`);
     document.title = `${L(p.title)} - ${L(B.title)}`;
   }
   renderMapSources(p);
+  linkPlaces();
   story.scrollTop = 0;
   const legs = routeLegs(p);
   legend.innerHTML = p.zones.map(z => `<button type="button" class="lg" data-hl="zone:${esc(z)}" aria-pressed="false"><i style="${patternCss(B.zones[z].family)}"></i>${esc(L(B.zones[z].name))}</button>`).join('')
@@ -685,6 +699,13 @@ document.addEventListener('keydown', e => {
     if (cur + step >= -1 && cur + step < PAGES.length) go(cur + step);
   }
 });
+// pointing at a place or tabbing to it pops its marker
+const placeOf = e => phone.matches ? null : e.target.closest?.('.place');
+story.addEventListener('mouseover', e => { const p = placeOf(e); if (p && canHover.matches) popMarker(p.dataset.marker, true); });
+story.addEventListener('mouseout', e => { const p = placeOf(e); if (p && canHover.matches && !p.contains(e.relatedTarget)) popMarker(p.dataset.marker, false); });
+story.addEventListener('focusin', e => { const p = placeOf(e); if (p?.matches(':focus-visible')) popMarker(p.dataset.marker, true); });
+story.addEventListener('focusout', e => { const p = placeOf(e); if (p) popMarker(p.dataset.marker, false); });
+phone.addEventListener('change', linkPlaces);
 $('lb-close').onclick = closeImage;
 $('lightbox').addEventListener('click', e => { if (e.target.id === 'lightbox') closeImage(); });
 $('lang').onchange = e => setLang(e.target.value);
