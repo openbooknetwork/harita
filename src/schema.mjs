@@ -168,7 +168,7 @@ const Drawing = z.string().regex(/^[0-9a-f]{64}$/, 'a drawing hash, harita zones
 export const Apart = z.array(z.object({ zones: z.tuple([ZoneRef, ZoneRef]), why: z.string().min(1), drawings: z.tuple([Drawing, Drawing]) }).strict());
 export const Route = z.object({
   type: z.literal('Feature'),
-  properties: z.object({ id: Id.optional(), name: Translatable, style: z.enum(['solid', 'dashed']).default('solid'), arrows: z.boolean().default(true), offset: z.number().min(-20).max(20).default(0) }).strict(),
+  properties: z.object({ id: Id.optional(), name: Translatable, style: z.enum(['solid', 'dashed']).default('solid'), arrows: z.boolean().default(true), offset: z.number().min(-20).max(20).default(0), color: Id.optional() }).strict(),
   geometry: z.object({ type: z.literal('LineString'), coordinates: z.array(z.tuple([Lon, Lat])).min(2) }),
 });
 

@@ -1,5 +1,6 @@
 // Builds a copy of example/ and checks the output, then breaks the copy in the ways the build must catch.
 import { test } from 'node:test';
+import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import fs from 'fs';
 import os from 'os';
@@ -493,8 +494,12 @@ test('every page gets a URL per language: main pages, story overviews and steps'
   assert.ok(read(root, 'de/index.html').includes(`href="${story}/en/"`));
   assert.ok(read(root, 'tr/index.html').includes(`href="${story}/tr/"`));
   assert.ok(fs.existsSync(path.join(root, 'dist/404.html')) && fs.existsSync(path.join(root, `dist/${story}/tr.md`)));
-  // the same settings on every page: layout, language and theme
-  for (const page of [`${story}/en/landnam/index.html`, 'en/index.html']) assert.ok(read(root, page).includes('<div class="group layout-group">'), page);
+  // the same settings on every page, layout and theme, and the language beside them in the header
+  for (const page of [`${story}/en/landnam/index.html`, 'en/index.html']) {
+    const html = read(root, page);
+    assert.ok(html.includes('<div class="group layout-group">'), page);
+    assert.ok(html.indexOf('id="langpick"') < html.indexOf('id="settings"') && !html.includes('id="lang-label"'), page);
+  }
   assert.equal(bundleOf(root).ui.tr.layout_left, 'Metin solda');
 });
 
@@ -984,6 +989,21 @@ test('a battle folder or an include used the wrong way stops the build, naming t
     breakIt(root);
     await assert.rejects(make(root), message);
   }
+});
+
+test('a route takes the colour of the family it names', async () => {
+  const colour = (root, family) => {
+    const file = path.join(root, STORY, 'shared/routes/pillars.geojson'), route = JSON.parse(fs.readFileSync(file, 'utf8'));
+    route.properties.color = family; fs.writeFileSync(file, JSON.stringify(route));
+  };
+  const root = copy();
+  colour(root, 'settled');
+  await make(root);
+  assert.equal(bundleOf(root).routes.pillars.color, 'settled');
+  new vm.Script(read(root, 'harita.js')); // the page script parses
+  const bad = copy();
+  colour(bad, 'norse');
+  await assert.rejects(make(bad), /pillars\.geojson: route "pillars" uses unknown family "norse"/);
 });
 
 // --- shared zones, and the zones of different stories that look like one region ---

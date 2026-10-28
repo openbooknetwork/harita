@@ -27,7 +27,13 @@ header .prefs{position:relative}
 #settings-btn{background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:4px;padding:.357rem .714rem;font:inherit;font-size:.929rem;cursor:pointer;display:inline-flex;align-items:center;gap:.357rem}
 #settings-btn svg{width:1rem;height:1rem}
 #settings-btn:focus-visible{outline:2px solid var(--accent)}
-/* settings: the same panel as on a story page, the layout, the language and the theme, under its button */
+/* the language beside the settings, as on a story page */
+.langpick{display:inline-flex;align-items:center;gap:.143rem;background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:4px;padding-inline-start:.714rem;font-size:.929rem}
+.langpick svg{width:1rem;height:1rem;flex:none}
+.langpick select{background:var(--panel);color:inherit;border:0;border-radius:4px;font:inherit;padding:.357rem .571rem;cursor:pointer}
+.langpick:focus-within{outline:2px solid var(--accent)}
+.langpick select:focus{outline:none}
+/* settings: the same panel as on a story page, the layout and the theme, under its button */
 .settings{position:absolute;top:calc(100% + .429rem);inset-inline-end:0;z-index:8;width:min(24rem,calc(100vw - 2.286rem));display:grid;gap:.857rem;
   background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:.857rem;box-shadow:0 4px 16px rgba(0,0,0,.25)}
 .settings .group{display:grid;gap:.357rem}
@@ -39,8 +45,8 @@ header .prefs{position:relative}
 .layouts button[aria-checked="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 .layouts button:focus-visible{outline:2px solid var(--accent)}
 @media (max-width:900px){ .settings .layout-group{display:none} } /* a phone has one layout */
-select#lang,select#theme{width:100%;min-height:max(40px,2.857rem);background:var(--paper);color:var(--ink);border:1px solid var(--rule);border-radius:4px;padding:0 .571rem;font:inherit;cursor:pointer}
-select#lang:focus-visible,select#theme:focus-visible{outline:2px solid var(--accent)}
+select#theme{width:100%;min-height:max(40px,2.857rem);background:var(--paper);color:var(--ink);border:1px solid var(--rule);border-radius:4px;padding:0 .571rem;font:inherit;cursor:pointer}
+select#theme:focus-visible{outline:2px solid var(--accent)}
 .intro{max-width:62ch;color:var(--ink-2);margin:0}
 .listbar{display:flex;justify-content:space-between;align-items:center;gap:.857rem;flex-wrap:wrap}
 .listbar input{flex:1;max-width:24rem;min-height:max(40px,2.857rem);background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:6px;padding:0 .857rem;font:inherit}
@@ -88,11 +94,11 @@ select#lang:focus-visible,select#theme:focus-visible{outline:2px solid var(--acc
   <header>
     <h1 id="title"></h1>
     <div class="controls"><a class="contribute" id="contribute" target="_blank" rel="noopener" hidden></a>
+      <label class="langpick" id="langpick"><span id="lang-icon" aria-hidden="true"></span><select id="lang"></select></label>
       <div class="prefs">
         <button type="button" id="settings-btn" aria-expanded="false" aria-controls="settings"></button>
         <div class="settings" id="settings" hidden>
           <div class="group layout-group"><span id="layout-label"></span><div class="layouts" id="layouts" role="radiogroup"></div></div>
-          <label class="group"><span id="lang-label"></span><select id="lang"></select></label>
           <label class="group"><span id="theme-label"></span><select id="theme"></select></label>
         </div>
       </div>
@@ -126,10 +132,11 @@ function render(){
   $('intro').textContent = L(S.intro);
   if (S.repository) { $('contribute').href = S.repository; $('contribute').textContent = S.ui[lang].contribute; $('contribute').hidden = false; }
   fillSelect($('lang'), S.languages.map(l => ({ value: l, text: S.ui[l].name ?? l })), lang, S.ui[lang].language);
+  $('lang-icon').innerHTML = S.icons.languages; $('langpick').title = S.ui[lang].language; $('langpick').hidden = S.languages.length < 2;
   fillSelect($('theme'), S.themes.map(t => ({ value: t.id, text: pick(t.name, lang, S.defaultLanguage, t.id) })), palette, S.ui[lang].theme);
   $('settings-btn').innerHTML = `${S.icons.settings} ${esc(S.ui[lang].settings)}`;
   $('settings').setAttribute('aria-label', S.ui[lang].settings);
-  $('lang-label').textContent = S.ui[lang].language; $('theme-label').textContent = S.ui[lang].theme;
+  $('theme-label').textContent = S.ui[lang].theme;
   $('layout-label').textContent = S.ui[lang].layout; $('layouts').setAttribute('aria-label', S.ui[lang].layout);
   $('layouts').innerHTML = layoutButtons(S.ui[lang], pref('layout', LAYOUTS, 'center'));
   $('search').placeholder = S.ui[lang].search_stories; $('search').setAttribute('aria-label', S.ui[lang].search_stories);

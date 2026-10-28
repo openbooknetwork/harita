@@ -670,9 +670,17 @@ overlaps are kept in `.cache/harita/` by the drawings they come from, so a build
 ### Routes
 
 A GeoJSON Feature with a LineString geometry and properties `id`, `name`, `style` (`solid` or
-`dashed`) and `arrows`. A route draws itself on when a page first shows it, with chevrons along it
+`dashed`), `arrows` and `color`. A route draws itself on when a page first shows it, with chevrons along it
 pointing the way it was travelled, from its first point to its last. Set `"arrows": false` for a line that
 marks a front or a border rather than a movement.
+
+`color` names the family that travels the route, such as `"color": "ottomans"`, and the line, its chevrons and
+its legend entry take that family's colour. A route without it takes the theme's `route` colour.
+
+The routes of one colour on a page are the legs of one march. When a march has two legs or more, each leg shows its
+number at its start, in the order the page lists them, on the map and in the legend. The last leg has the full
+colour, and the ones before it are mixed with the theme's ink, the earlier the more. A route with `"arrows": false`
+is no leg and keeps the full colour.
 
 A journey out and back is two routes, so each leg keeps its own arrows. Give the return an `offset` in pixels,
 for example `"offset": 5`, and it runs beside the way out instead of on top of it; positive values shift

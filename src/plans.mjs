@@ -57,7 +57,7 @@ export function writePlan(story, pageDir, { emblem, markers, show = [], routes, 
     fs.rmSync(path.join(dir, 'routes'), { recursive: true, force: true });
     if (Object.keys(routes).length) fs.mkdirSync(path.join(dir, 'routes'), { recursive: true });
     for (const [id, r] of Object.entries(routes)) {
-      const props = { name: r.name, style: r.style ?? 'solid', arrows: r.arrows ?? true, ...(r.offset ? { offset: r.offset } : {}) };
+      const props = { name: r.name, style: r.style ?? 'solid', arrows: r.arrows ?? true, ...(r.offset ? { offset: r.offset } : {}), ...(r.color ? { color: r.color } : {}) };
       fs.writeFileSync(path.join(dir, 'routes', id + '.geojson'), JSON.stringify({ type: 'Feature', properties: props, geometry: { type: 'LineString', coordinates: r.path.map(q => q.map(r5)) } }) + '\n');
     }
     setKey('routes', `[${Object.keys(routes).join(', ')}]`);

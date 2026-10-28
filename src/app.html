@@ -42,7 +42,13 @@ header a.src:focus-visible{outline:2px solid var(--accent)}
 .ctl button:disabled{opacity:.35;cursor:default}
 .ctl button:focus-visible{outline:2px solid var(--accent)}
 .ctl #stepno{font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:.929rem;text-align:center;white-space:nowrap}
-/* settings: the layout, the language and the theme, in a panel under its button at the header's end on every screen */
+/* the language, beside the settings on every screen, so a reader who cannot read the current one still finds it */
+.langpick{display:inline-flex;align-items:center;gap:.143rem;background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:4px;padding-inline-start:.571rem;font-size:.857rem}
+.langpick svg{width:.929rem;height:.929rem;flex:none}
+.langpick select{background:var(--panel);color:inherit;border:0;border-radius:4px;font:inherit;padding:.286rem .429rem;cursor:pointer}
+.langpick:focus-within{outline:2px solid var(--accent)}
+.langpick select:focus{outline:none}
+/* settings: the layout and the theme, in a panel under its button at the header's end on every screen */
 .prefs{position:relative}
 #settings-btn{background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:4px;padding:.286rem .571rem;font:inherit;font-size:.857rem;cursor:pointer;display:inline-flex;align-items:center;gap:.286rem}
 #settings-btn svg{width:.929rem;height:.929rem}
@@ -102,8 +108,8 @@ nav.pages button:focus-visible,nav.pages a.pg:focus-visible{outline:2px solid va
   padding:.286rem .571rem;border-radius:4px;max-width:18rem;box-shadow:0 1px 4px rgba(0,0,0,.3)}
 .hl-label.pinned{top:calc(.714rem + max(40px,2.857rem) + .429rem);left:50%;transform:translateX(-50%);max-width:calc(100% - 1.143rem);text-align:center} /* below the 2D | 3D switch */
 .legend i{width:1rem;height:.714rem;display:inline-block;border:1px solid var(--ink-2);flex:none}
-.legend .r{width:1rem;height:0;border:0;border-top:2px solid var(--route);position:relative}
-.legend .r.arrow::after{content:"";position:absolute;inset-inline-end:-2px;top:-5px;border:4px solid transparent;border-inline-start:5px solid var(--route)}
+.legend .r{width:1rem;height:0;border:0;border-top:2px solid var(--rc);position:relative}
+.legend .r.arrow::after{content:"";position:absolute;inset-inline-end:-2px;top:-5px;border:4px solid transparent;border-inline-start:5px solid var(--rc)}
 .legend .r.dashed{border-top-style:dashed}
 .credit{position:absolute;inset-inline-end:.714rem;bottom:.714rem;background:var(--panel);border:1px solid var(--rule);padding:3px .571rem;font-size:.786rem;color:var(--ink-2);pointer-events:auto;
   display:flex;align-items:center;gap:.571rem}
@@ -159,6 +165,9 @@ aside.story figcaption small{display:block;font-size:.786rem;color:var(--ink-2);
 .mk b{font-family:var(--display);font-weight:700;font-size:.857rem;color:var(--ink);background:var(--paper);padding:0 .286rem;border-radius:2px;white-space:nowrap}
 .mk small{font-size:.714rem;color:var(--ink-2);background:var(--paper);padding:0 .286rem;border-radius:2px;white-space:nowrap}
 .maplibregl-marker{opacity:0;transition:opacity .6s}
+/* the number of a leg, when one family has more than one route on the page: on the map at the middle of the leg, and in the legend */
+.legno{min-width:1.286rem;height:1.286rem;padding:0 .214rem;border-radius:999px;display:inline-grid;place-items:center;flex:none;background:var(--rc);color:var(--paper);
+  border:2px solid var(--paper);font-size:.714rem;font-weight:600;line-height:1;font-variant-numeric:tabular-nums;pointer-events:none}
 .maplibregl-marker.in{opacity:1}
 /* battle card */
 .maplibregl-popup{position:absolute;top:0;left:0;display:flex;will-change:transform;pointer-events:none;z-index:4}
@@ -299,11 +308,11 @@ aside.story figcaption small{display:block;font-size:.786rem;color:var(--ink-2);
   <span class="note" id="hint"></span>
   <div class="tools">
     <a class="src" id="src" target="_blank" rel="noopener" hidden></a>
+    <label class="langpick" id="langpick"><span id="lang-icon" aria-hidden="true"></span><select id="lang"></select></label>
     <div class="prefs">
       <button type="button" id="settings-btn" aria-expanded="false" aria-controls="settings"></button>
       <div class="settings" id="settings" hidden>
         <div class="group layout-group"><span id="layout-label"></span><div class="layouts" id="layouts" role="radiogroup"></div></div>
-        <label class="group"><span id="lang-label"></span><select id="lang"></select></label>
         <label class="group"><span id="theme-label"></span><select id="theme"></select></label>
       </div>
     </div>

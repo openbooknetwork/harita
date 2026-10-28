@@ -33,7 +33,7 @@ test('writePlan writes the emblem, bbox, markers and routes and keeps the rest o
     bbox: f.box([[-500, -500], [500, 500]], 100),
     emblem: { units: [{ side: 'neutral', type: 'archers', at: f.p(0, 0), width: 200, depth: 60, facing: f.face(0), name: { en: 'Bowmen' } }] },
     markers: { lawrock: { lnglat: f.p(100, 0), icon: 'landmark', label: { en: 'Lögberg' } } },
-    routes: { 'to-the-rift': { name: { en: 'To the rift' }, path: [f.p(0, 0), f.p(0, -300)] } },
+    routes: { 'to-the-rift': { name: { en: 'To the rift' }, color: 'settled', path: [f.p(0, 0), f.p(0, -300)] } },
   });
   const text = fs.readFileSync(path.join(page, 'page.yaml'), 'utf8');
   assert.match(text, /^emblem:\n {2}kind: battle-plan\n {2}units:\n {4}- \{side: neutral, type: archers/m);
@@ -42,7 +42,7 @@ test('writePlan writes the emblem, bbox, markers and routes and keeps the rest o
   assert.match(text, /^when: 1012$/m);
   assert.match(text, /^# battle-plan ships with harita/m);
   assert.ok(text.includes('Njáls saga, ch. 145.'));
-  assert.ok(fs.existsSync(path.join(page, 'routes/to-the-rift.geojson')));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(page, 'routes/to-the-rift.geojson'), 'utf8')).properties.color, 'settled');
   assert.match(fs.readFileSync(path.join(page, 'markers.yaml'), 'utf8'), /^lawrock:\n {2}lnglat: \[/m);
   // the written page builds
   buildPages({ root, log: () => {}, cache: path.join(root, '.cache/harita'), localAssets: true });

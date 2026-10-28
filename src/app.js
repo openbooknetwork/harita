@@ -25,6 +25,19 @@ const writeRoute = push => setRoute(cur < 0 ? [lang] : [lang, PAGES[cur].id], pu
 if (ROUTE) { lang = ROUTE.lang; if (ROUTE.page) cur = pageIndex(ROUTE.page); }
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const colorVar = family => family ? `--z-${family}` : '--accent';
+// a route takes the colour of the family that travels it, else the theme's route colour
+const routeVar = id => B.routes[id].color ? colorVar(B.routes[id].color) : '--route';
+// the routes of one colour on a page are the legs of one march, numbered in the order the page lists them; they shade
+// from the first, mixed with the ink so it stands out on either theme, to the full colour of the last. tone is the
+// share of the colour in percent. A route without arrows marks a front or a border and keeps the full colour.
+function routeLegs(page){
+  const marches = {}, legs = {};
+  for (const id of page.routes) { legs[id] = { tone: 100, n: null }; if (B.routes[id].arrows) (marches[routeVar(id)] ??= []).push(id); }
+  for (const ids of Object.values(marches)) if (ids.length > 1) ids.forEach((id, i) => legs[id] = { tone: Math.round(40 + 60 * i / (ids.length - 1)), n: i + 1 });
+  return legs;
+}
+// two #rrggbb colours mixed as CSS color-mix(in srgb) mixes them, so the map and the legend agree
+const mixHex = (a, b, pct) => '#' + [1, 3, 5].map(i => Math.round(parseInt(a.slice(i, i + 2), 16) * pct / 100 + parseInt(b.slice(i, i + 2), 16) * (100 - pct) / 100).toString(16).padStart(2, '0')).join('');
 // A 16 px tile in the family colour, drawn so it repeats without seams: hatch, cross or dots.
 function patternImage(kind, color){
   const s = 16, c = document.createElement('canvas'); c.width = c.height = s; const g = c.getContext('2d');
@@ -162,7 +175,7 @@ function hillPaint(){
 }
 
 // ---------- map ----------
-const ML = { map:null, ready:false, markers:{}, anim:{}, shown:{}, camera:0, zoneData:new Set(), zoneHide:{} };
+const ML = { map:null, ready:false, markers:{}, legs:{}, anim:{}, shown:{}, camera:0, zoneData:new Set(), zoneHide:{} };
 function mapInit(){
   if (!window.maplibregl) { $('map').innerHTML = `<div class="fail">${esc(T().map_failed_cdn)}</div>`; return; }
   const [w, s, e, n] = B.extent;
@@ -207,16 +220,15 @@ function mapInit(){
     }
     m.addLayer({ id:'borders', type:'line', source:'countries', paint:{ 'line-color': css('--border'), 'line-width':0.8, 'line-dasharray':[2, 2] } });
     m.addLayer({ id:'land-outline', type:'line', source:'land', paint:{ 'line-color': css('--ink'), 'line-width':1.2 } });
-    m.addImage('route-arrow', arrowImage(), { pixelRatio: 2 });
     for (const id in B.routes) {
       m.addSource('r-' + id, { type:'geojson', data: routeFeature(id, []) });
       const offset = B.routes[id].offset; // line-offset and the arrows' offset both count to the right of travel
       m.addLayer({ id:'rc-' + id, type:'line', source:'r-' + id, layout:{ 'line-cap':'round', 'line-join':'round' }, paint:{ 'line-color': css('--paper'), 'line-width':5, 'line-offset': offset } });
-      const paint = { 'line-color': css('--route'), 'line-width':2.5, 'line-offset': offset };
+      const paint = { 'line-color': css(routeVar(id)), 'line-width':2.5, 'line-offset': offset };
       if (B.routes[id].style === 'dashed') paint['line-dasharray'] = [2, 1.5];
       m.addLayer({ id:'r-' + id, type:'line', source:'r-' + id, layout:{ 'line-cap':'round', 'line-join':'round' }, paint });
       if (B.routes[id].arrows) m.addLayer({ id:'ra-' + id, type:'symbol', source:'r-' + id,
-        layout:{ 'symbol-placement':'line', 'symbol-spacing':70, 'icon-image':'route-arrow', 'icon-rotation-alignment':'map', 'icon-allow-overlap':true, 'icon-ignore-placement':true, 'icon-keep-upright':false, 'icon-offset':[0, offset] } });
+        layout:{ 'symbol-placement':'line', 'symbol-spacing':70, 'icon-image': arrowFor(css(routeVar(id))), 'icon-rotation-alignment':'map', 'icon-allow-overlap':true, 'icon-ignore-placement':true, 'icon-keep-upright':false, 'icon-offset':[0, offset] } });
     }
     m.addSource('emblem', { type:'geojson', data: { type:'FeatureCollection', features: [] } });
     // the GPU smooths the emblem's edges, since MapLibre's edge pass draws covered shapes' edges over the shapes on top
@@ -237,14 +249,15 @@ function mapInit(){
     ML.ready = true; mapApply(here(), true);
   });
 }
-// a chevron pointing along +x, the way a line symbol is turned to follow its line; drawn in the theme's route
-// colour over a paper coloured outline, at twice the resolution for sharp screens
-function arrowImage(){
+// a chevron pointing along +x, the way a line symbol is turned to follow its line; drawn in the colour over a paper
+// coloured outline, at twice the resolution for sharp screens, one image per colour
+function arrowFor(color){ const n = 'arrow' + color; if (!ML.map.hasImage(n)) ML.map.addImage(n, arrowImage(color), { pixelRatio: 2 }); return n; }
+function arrowImage(color){
   const s = 2, w = 16 * s, c = document.createElement('canvas'); c.width = w; c.height = w;
   const g = c.getContext('2d'); g.lineCap = 'round'; g.lineJoin = 'round';
   const chevron = () => { g.beginPath(); g.moveTo(5 * s, 3.5 * s); g.lineTo(11 * s, 8 * s); g.lineTo(5 * s, 12.5 * s); g.stroke(); };
   g.strokeStyle = css('--paper'); g.lineWidth = 5.5 * s; chevron();
-  g.strokeStyle = css('--route'); g.lineWidth = 2.6 * s; chevron();
+  g.strokeStyle = color; g.lineWidth = 2.6 * s; chevron();
   return g.getImageData(0, 0, w, w);
 }
 function mapTheme(){
@@ -257,8 +270,8 @@ function mapTheme(){
   m.setPaintProperty('land-outline', 'line-color', css('--ink'));
   for (const id in B.zones) { const c = css(colorVar(B.zones[id].family)); m.setPaintProperty('z-' + id, 'fill-color', c); m.setPaintProperty('zl-' + id, 'line-color', c); }
   for (const f in B.families) if (B.families[f].pattern) m.updateImage('pat-' + f, patternImage(B.families[f].pattern, css(colorVar(f))));
-  for (const id in B.routes) { m.setPaintProperty('rc-' + id, 'line-color', css('--paper')); m.setPaintProperty('r-' + id, 'line-color', css('--route')); }
-  if (m.hasImage('route-arrow')) m.updateImage('route-arrow', arrowImage());
+  for (const id in B.routes) { m.setPaintProperty('rc-' + id, 'line-color', css('--paper')); m.setPaintProperty('r-' + id, 'line-color', css(routeVar(id))); }
+  routeColors(here());
   for (const id in B.battles) if (B.battles[id].front) m.setPaintProperty('bf-' + id, 'line-color', css('--accent'));
   m.setPaintProperty('emblem', 'fill-color', emblemFill()); m.setPaintProperty('emblem-hl', 'line-color', css('--ink'));
 }
@@ -375,6 +388,31 @@ function freeCamera(on){
 function renderView(){
   for (const b of $('view').querySelectorAll('button')) b.setAttribute('aria-pressed', b.dataset.view === view);
 }
+// the page's routes and their arrows in their tones
+function routeColors(page){
+  const legs = routeLegs(page), ink = css('--ink');
+  for (const id of page.routes) {
+    const c = mixHex(css(routeVar(id)), ink, legs[id].tone);
+    ML.map.setPaintProperty('r-' + id, 'line-color', c);
+    if (B.routes[id].arrows) ML.map.setLayoutProperty('ra-' + id, 'icon-image', arrowFor(c));
+    ML.legs[id]?.getElement().style.setProperty('--rc', c);
+  }
+}
+// the leg numbers, each at the start of its leg, or a little along it where a marker or another number sits on the
+// start, a thirtieth of the page's width away; a number shows once its leg has drawn that far
+const LEG_AT = [0, 0.04, 0.08, 0.12, 0.16, 0.2, 0.25, 0.3];
+function legMarkers(page){
+  for (const id in ML.legs) { ML.legs[id].remove(); delete ML.legs[id]; }
+  const legs = routeLegs(page), [w, , e] = page.bbox ?? B.extent, clear = (e - w) / 30;
+  const taken = [...page.markers.map(m => B.markers[m].lnglat), ...(page.battle ? [B.battles[page.battle].lnglat] : [])];
+  const far = p => taken.every(q => Math.hypot((p[0] - q[0]) * Math.cos(p[1] * Math.PI / 180), p[1] - q[1]) > clear);
+  for (const id of page.routes) if (legs[id].n) {
+    const line = turf.lineString(B.routes[id].coordinates), len = turf.length(line);
+    const spots = LEG_AT.map(t => turf.along(line, len * t).geometry.coordinates), at = spots.find(far) ?? spots[0];
+    const el = document.createElement('div'); el.className = 'legno'; el.textContent = legs[id].n;
+    ML.legs[id] = new maplibregl.Marker({ element: el }).setLngLat(at).addTo(ML.map); ML.legs[id].at = LEG_AT[spots.indexOf(at)]; taken.push(at);
+  }
+}
 function mapApply(page, first){
   const m = ML.map; if (!m || !ML.ready) return;
   camera(page, first ? 0 : DUR);
@@ -383,16 +421,18 @@ function mapApply(page, first){
   for (const id in B.zones) zoneShow(id, page.zones.includes(id));
   for (const id in B.routes) routeWidth(id, false);
   const fresh = page.routes.filter(id => !ML.shown[id]);
+  legMarkers(page);
   for (const id in B.routes) {
     const on = page.routes.includes(id); const src = m.getSource('r-' + id); const coords = B.routes[id].coordinates;
     cancelAnimationFrame(ML.anim[id]);
     if (!on) { src.setData(routeFeature(id, [])); ML.shown[id] = false; continue; }
-    if (ML.shown[id]) { src.setData(routeFeature(id, coords)); continue; }
+    if (ML.shown[id]) { src.setData(routeFeature(id, coords)); ML.legs[id]?.getElement().classList.add('in'); continue; }
     ML.shown[id] = true;
     const t0 = performance.now() + (first ? 0 : DUR * 0.6) + fresh.indexOf(id) * DUR, len = DUR || 1;
-    const tick = now => { const t = Math.min(1, Math.max(0, (now - t0) / len)); src.setData(routeFeature(id, sliceRoute(coords, t))); if (t < 1) ML.anim[id] = requestAnimationFrame(tick); };
+    const tick = now => { const t = Math.min(1, Math.max(0, (now - t0) / len)); src.setData(routeFeature(id, sliceRoute(coords, t))); if (ML.legs[id] && t >= ML.legs[id].at) ML.legs[id].getElement().classList.add('in'); if (t < 1) ML.anim[id] = requestAnimationFrame(tick); };
     ML.anim[id] = requestAnimationFrame(tick);
   }
+  routeColors(page);
   for (const id in B.battles) if (B.battles[id].front) m.setPaintProperty('bf-' + id, 'line-opacity', page.battle === id ? 0.9 : 0);
   m.getSource('emblem').setData(page.emblem ?? { type:'FeatureCollection', features: [] }); emblemLook(null);
   mapMarkers(page);
@@ -445,10 +485,11 @@ function renderChrome(){
   $('lb-close').textContent = T().close;
   navEl.setAttribute('aria-label', T().chronology);
   fillSelect($('lang'), B.languages.map(l => ({ value: l, text: B.ui[l].name ?? l })), lang, T().language);
+  $('lang-icon').innerHTML = ICONS.languages; $('langpick').title = T().language; $('langpick').hidden = B.languages.length < 2;
   fillSelect($('theme'), B.themes.map(t => ({ value: t.id, text: L(t.name) })), palette, T().theme);
   $('settings-btn').innerHTML = `${ICONS.settings} ${esc(T().settings)}`;
   $('settings').setAttribute('aria-label', T().settings);
-  $('layout-label').textContent = T().layout; $('lang-label').textContent = T().language; $('theme-label').textContent = T().theme;
+  $('layout-label').textContent = T().layout; $('theme-label').textContent = T().theme;
   $('layouts').setAttribute('aria-label', T().layout);
   $('layouts').innerHTML = layoutButtons(T(), layout);
 }
@@ -537,8 +578,9 @@ function renderStory(p){
   }
   renderMapSources(p);
   story.scrollTop = 0;
+  const legs = routeLegs(p);
   legend.innerHTML = p.zones.map(z => `<button type="button" class="lg" data-hl="zone:${esc(z)}" aria-pressed="false"><i style="${patternCss(B.zones[z].family)}"></i>${esc(L(B.zones[z].name))}</button>`).join('')
-    + p.routes.map(r => `<button type="button" class="lg" data-hl="route:${esc(r)}" aria-pressed="false"><i class="r ${B.routes[r].style}${B.routes[r].arrows ? ' arrow' : ''}"></i>${esc(L(B.routes[r].name))}</button>`).join('');
+    + p.routes.map(r => `<button type="button" class="lg" data-hl="route:${esc(r)}" aria-pressed="false" style="--rc:color-mix(in srgb, var(${routeVar(r)}) ${legs[r].tone}%, var(--ink))"><i class="r ${B.routes[r].style}${B.routes[r].arrows ? ' arrow' : ''}"></i>${legs[r].n ? `<span class="legno">${legs[r].n}</span>` : ''}${esc(L(B.routes[r].name))}</button>`).join('');
   legend.hidden = !legend.innerHTML;
   $('legend-btn').hidden = legend.hidden;
   renderPeek();

@@ -203,7 +203,7 @@ function readContent(p, storyDir, onProblem = null) {
   const zones = {}, routes = {}, markers = {}, battles = {}, images = {}, definedIn = {};
   const define = (table, id, value, file, kind, dir) => { if (table[id]) fail(file, `${kind} "${id}" is defined twice`); table[id] = value; definedIn[`${kind} ${id}`] = dir; };
   const icons = {}, icon = (name, at) => icons[name] ??= iconSvg(name, at);
-  for (const n of ['swords', 'x', 'external-link', 'chevron-left', 'chevron-right', 'list', 'info', 'settings']) icon(n, where);
+  for (const n of ['swords', 'x', 'external-link', 'chevron-left', 'chevron-right', 'list', 'info', 'settings', 'languages']) icon(n, where);
   // the bundle's colour table: the story's families, then each battle's as <battle>_<family>
   const families = { ...story.families };
   const texts = {}, firstImages = {};
@@ -320,8 +320,9 @@ function readContent(p, storyDir, onProblem = null) {
       for (const [id, u] of Object.entries(readYaml(usesFile, ZoneUses))) zoneUses.push({ id, ...u, file: rel(usesFile), dir });
     });
     for (const f of listFiles(path.join(dir, 'routes'), '.geojson')) attempt(dir, () => {
-      const file = path.join(dir, 'routes', f), feat = readJson(file, Route), own = feat.properties.id ?? idOf(f.replace('.geojson', '')), id = s.ns(own);
-      define(routes, id, { id, name: s.T(feat.properties.name, `routes.${own}.name`), style: feat.properties.style, arrows: feat.properties.arrows, offset: feat.properties.offset, coordinates: feat.geometry.coordinates }, rel(file), 'route', dir);
+      const file = path.join(dir, 'routes', f), feat = readJson(file, Route), p = feat.properties, own = p.id ?? idOf(f.replace('.geojson', '')), id = s.ns(own);
+      if (p.color && !s.families[p.color]) fail(rel(file), `route "${own}" uses unknown family "${p.color}"${s.battle ? ', add it to families in battle.yaml' : ''}`);
+      define(routes, id, { id, name: s.T(p.name, `routes.${own}.name`), style: p.style, arrows: p.arrows, offset: p.offset, color: p.color ? s.fam(p.color) : null, coordinates: feat.geometry.coordinates }, rel(file), 'route', dir);
     });
     const markerFile = path.join(dir, 'markers.yaml');
     if (exists(markerFile)) attempt(dir, () => {
@@ -735,7 +736,7 @@ function buildIndex(p, cards, site) {
   const ui = uiFor(langs, p.root);
   const data = {
     title: T(site.title, 'site.title'), intro: site.intro ? T(site.intro, 'site.intro') : {},
-    languages: langs, defaultLanguage: defaultLang, ui, repository: site.repository ?? null, icons: { settings: iconSvg('settings', 'site.yaml') },
+    languages: langs, defaultLanguage: defaultLang, ui, repository: site.repository ?? null, icons: { settings: iconSvg('settings', 'site.yaml'), languages: iconSvg('languages', 'site.yaml') },
     stories: order.map(id => { const { dir, i18n, terrain, folderI18n, localKeys, redirects, tree, coverOg, ...card } = cards.find(c => c.id === id); return card; }),
     themes: themeList(site.themes, ui, langs), defaultTheme: site.theme,
   };
