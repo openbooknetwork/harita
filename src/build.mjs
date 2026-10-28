@@ -18,6 +18,7 @@ import { terrainPlan, tileKeys, tileKey, terrainTiles, openZoom } from './terrai
 import { esc, ordinals, siteContext, storyFiles, siteFiles } from './pages.mjs';
 import { libraryItems, storyFolders, isImage, isBattle, isZone } from './folders.mjs';
 import { world } from './world.mjs';
+import { scriptPaths, writeVendor } from './vendor.mjs';
 import { hash, listDirs, idOf, boxesMeet } from './util.mjs';
 import { zonePairs, describePair } from './zones.mjs';
 import { sha256, imageKeys } from './image.mjs';
@@ -29,7 +30,8 @@ const require = createRequire(import.meta.url);
 const REPO = JSON.parse(fs.readFileSync(path.join(PKG, 'package.json'), 'utf8')).repository.url.replace(/^git\+/, '').replace(/\.git$/, '');
 const COMMON = fs.readFileSync(path.join(PKG, 'src', 'common.js'), 'utf8').replace('/*__REPO__*/', REPO);
 // the story page shell, and the script every story page shares as dist/harita.js
-const APP = fs.readFileSync(path.join(PKG, 'src', 'app.html'), 'utf8');
+const APP = fs.readFileSync(path.join(PKG, 'src', 'app.html'), 'utf8')
+  .replace('<!--__SCRIPTS__-->', Object.values(scriptPaths()).map(p => `<script src="../${p}"></script>`).join('\n'));
 const APP_JS = COMMON + '\n' + fs.readFileSync(path.join(PKG, 'src', 'app.js'), 'utf8');
 const INDEX = fs.readFileSync(path.join(PKG, 'src', 'index.html'), 'utf8').replace('/*__COMMON__*/', COMMON);
 // a script's version in its URL, so a browser holding the last release's copy fetches the new one
@@ -726,6 +728,8 @@ function storyNames(p) {
   if (exists(path.join(p.content, 'shared', 'story.yaml'))) fail('content/shared/story.yaml', 'content/shared/ holds the battles, images and zones stories share, move this story to a folder of another name');
   if (exists(path.join(p.content, 'shared', 'battles.yaml'))) fail('content/shared/battles.yaml', 'battles live in folders now, one per battle: content/shared/battles/<id>/battle.yaml');
   try { p.storyDirs = storyFolders(p.content, p.rel); } catch (err) { fail('content/', err.message); }
+  // a story's folder in dist/ sits beside the ones harita writes
+  for (const id of ['assets', 'vendor']) if (p.storyDirs.has(id)) fail(p.rel(p.storyDirs.get(id)), `harita writes dist/${id}/, give the story another folder name`);
   return [...p.storyDirs.keys()];
 }
 
@@ -870,6 +874,7 @@ export function buildPages({ root = process.cwd(), log = console.log, strict = f
     if (strict && copies.length) fail('content/', `zones that copy another one: ${copies.map(c => `${describePair(c)}: ${fix(c)}`).join('. ')}`);
   }
   writeFile(path.join(p.dist, 'harita.js'), APP_JS);
+  writeVendor(p.dist);
   const cards = [];
   for (const s of story ? [story] : stories) {
     const kept = only && !only.includes(s) && lastCard(s);

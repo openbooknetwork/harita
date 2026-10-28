@@ -34,8 +34,11 @@ content/**/images/**/image.*
 ```
 
 `npm run build` writes `dist/`: the main page listing the stories, each story's pages under `dist/<story>/`, the
-story data in `dist/<story>/story.js` and the script all story pages share in `dist/harita.js`. The pages load
-images and elevation tiles from the asset store, so `dist/` holds no image or tile files. `dist/404.html` answers
+story data in `dist/<story>/story.js` and the script all story pages share in `dist/harita.js`. `dist/vendor/` holds
+MapLibre, Turf, topojson-client, the Fraunces and Public Sans fonts and the map label glyphs, copied from harita's
+packages and its `glyphs/` folder, so a page loads nothing from another host. A story folder cannot be named
+`vendor` or `assets`. The pages load images and elevation tiles from the asset store, so `dist/` holds no image or
+tile files. `dist/404.html` answers
 unknown paths and links back to the main page. Links are relative, so `dist/` works from `npm run dev` and from
 any static host or subpath.
 
@@ -237,7 +240,8 @@ to the site runs the Worker, which answers a path as `harita dev` does, both thr
 
 Each answer carries the object's `Content-Type` and `ETag` and `Cache-Control: public, max-age=600`, and a request
 with a matching `If-None-Match` gets 304. A script URL carries its version hash, so a new release's page asks for
-the new script. The Worker keeps each answer in the data centre's cache for the same ten minutes.
+the new script. The Worker keeps each answer in the data centre's cache for the same ten minutes. A file in a
+versioned folder of `vendor/`, such as `vendor/maplibre-gl@5.24.0/`, gets `public, max-age=31536000, immutable`.
 
 ### Cloudflare setup for the site
 

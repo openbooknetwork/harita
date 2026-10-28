@@ -35,8 +35,8 @@ export async function deploy({ root = process.cwd(), dryRun = false, log = conso
     log(`would upload ${plural(changed.length, 'file')} (${mb(bytes)}), delete ${gone.length.toLocaleString('en')}, ${kept.toLocaleString('en')} are in the bucket`);
     return { uploaded: changed, deleted: gone, kept };
   }
-  // a page links its scripts by version, so the scripts go first and a new page finds its script in the bucket
-  const script = f => /\.(js|css)$/.test(f);
+  // a page links its scripts, fonts and glyphs by version, so they go first and a new page finds them in the bucket
+  const script = f => /\.(js|css)$/.test(f) || f.startsWith('vendor/');
   const cur = { what: 'dist', n: 0, total: changed.length, bytes: 0 };
   const put = async f => {
     const body = fs.readFileSync(path.join(dist, f));

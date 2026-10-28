@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { createRequire } from 'module';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import * as turf from '@turf/turf';
 import { check, Zone, SharedZone, Story, Apart } from './schema.mjs';
 import { world } from './world.mjs';
@@ -15,6 +15,8 @@ import { hash as sha, idOf, boxesMeet } from './util.mjs';
 const REPORT = 0.9, SAME = 0.98; // the overlap a pair is reported at, and the one that makes it the same land
 // part of each land cut's cache key: this file, world.mjs and the versions of the libraries the cut comes from
 const require = createRequire(import.meta.url);
+// the zones report is a local file, so it loads the MapLibre harita installed, without the .js or .css
+const MAPLIBRE = pathToFileURL(require.resolve('maplibre-gl')).href.replace(/\.js$/, '');
 const LAND_CODE = sha([fileURLToPath(import.meta.url), fileURLToPath(new URL('./world.mjs', import.meta.url))].map(f => fs.readFileSync(f, 'utf8'))
   .concat(['@turf/turf', 'world-atlas'].map(m => require(`${m}/package.json`).version)));
 const english = v => typeof v === 'object' && v !== null ? v.en ?? Object.values(v)[0] : v;
@@ -192,7 +194,7 @@ function reviewPage(pairs) {
   const json = JSON.stringify(data).replace(/</g, '\\u003c');
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Zone pairs</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.24.0/maplibre-gl.css">
+<link rel="stylesheet" href="${MAPLIBRE}.css">
 <style>
 :root{--paper:#f6f3ea;--ink:#222;--rule:#d8d2c2;--a:#c62828;--b:#1f5fbf}
 @media (prefers-color-scheme:dark){:root{--paper:#1c1c1a;--ink:#eee;--rule:#3a3a36}}
@@ -205,7 +207,7 @@ nav button[aria-current]{background:var(--rule)}nav small{display:block;opacity:
 </style></head><body>
 <nav id="list"></nav><div id="map"></div>
 <div class="bar"><span class="a" id="la"></span><br><span class="b" id="lb"></span><br><label><input type="checkbox" id="cut" checked> cut to land</label></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.24.0/maplibre-gl.js"></script>
+<script src="${MAPLIBRE}.js"></script>
 <script>
 const PAIRS = ${json};
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();

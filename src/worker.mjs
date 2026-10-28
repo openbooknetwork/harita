@@ -4,6 +4,8 @@
 import { resolve } from './routes.mjs';
 
 const CACHE = 'public, max-age=600';
+// a folder of dist/vendor/ names its package's version, so its files never change
+const cacheFor = key => /^vendor\/[^/]+@[^/]+\//.test(key) ? 'public, max-age=31536000, immutable' : CACHE;
 
 // The answer to a request's URL from the bucket, with the object's Content-Type and ETag.
 async function answer(bucket, url) {
@@ -17,7 +19,7 @@ async function answer(bucket, url) {
   if (r.location) return new Response(null, { status: 301, headers: { location: r.location, 'cache-control': CACHE } });
   const obj = objects.get(r.key) ?? await bucket.get(r.key);
   if (!obj) return new Response('not found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': CACHE } });
-  return new Response(obj.body, { status: r.status, headers: { 'content-type': obj.httpMetadata?.contentType ?? 'application/octet-stream', etag: obj.httpEtag, 'cache-control': CACHE } });
+  return new Response(obj.body, { status: r.status, headers: { 'content-type': obj.httpMetadata?.contentType ?? 'application/octet-stream', etag: obj.httpEtag, 'cache-control': cacheFor(r.key) } });
 }
 
 // A 304 for a page the browser holds, else the answer, without its body for HEAD.

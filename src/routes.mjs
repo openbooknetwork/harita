@@ -2,7 +2,7 @@
 // the site. The module has no Node imports, so the Worker bundles it as it is.
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.md': 'text/markdown; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8', '.xml': 'application/xml', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
+  '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.pbf': 'application/x-protobuf' };
 export const typeOf = file => TYPES[file.slice(file.lastIndexOf('.')).toLowerCase()] ?? 'application/octet-stream';
 
 const NOT_FOUND = { key: '404.html', status: 404 };

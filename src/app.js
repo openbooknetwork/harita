@@ -89,7 +89,8 @@ const DUR = reduced ? 0 : 1400;
 const countries = topojson.feature(B.topo, B.topo.objects.countries);
 // the theme's land tints, picked per country by the tint index the build assigned
 // Noto Sans glyphs, SIL Open Font License, fetched by range from the Protomaps assets host when a story labels its countries
-const GLYPHS = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
+// the label glyphs harita copies to dist/vendor/glyphs/; MapLibre wants an absolute URL, and fills in the braces itself
+const GLYPHS = new URL('../vendor/glyphs/', document.baseURI).href + '{fontstack}/{range}.pbf';
 const landFill = () => { const tints = [...Array(8)].map((_, i) => css(`--land-${i}`).trim()); return ['match', ['get', 'tint'], ...tints.flatMap((c, i) => [i, c]), tints[0]]; };
 // zone outlines come from one topology, decoded the first time a page shows the zone; a zone smaller than a pixel
 // on every page that shows it has no outline in it
@@ -266,7 +267,7 @@ function mapInit(){
     if (B.labels) { // atlas lettering: small caps in ink-2 with a land coloured halo, larger countries win a collision
       m.addSource('labels', { type:'geojson', data: { type:'FeatureCollection', features: B.labels } });
       m.addLayer({ id:'labels', type:'symbol', source:'labels',
-        layout:{ 'text-field': ['get', lang], 'text-font': ['Noto Sans Regular'], 'text-size': ['interpolate', ['linear'], ['zoom'], 3.5, 9, 6, 12, 9, 16], 'text-transform': 'uppercase',
+        layout:{ 'text-field': ['get', lang], 'text-font': ['noto-sans'], 'text-size': ['interpolate', ['linear'], ['zoom'], 3.5, 9, 6, 12, 9, 16], 'text-transform': 'uppercase',
           'text-letter-spacing': 0.18, 'text-max-width': 7, 'text-padding': 12, 'symbol-sort-key': ['get', 'rank'] },
         paint:{ 'text-color': css('--ink-2'), 'text-halo-color': css('--paper-2'), 'text-halo-width': 1.2, 'text-opacity': 0.85 } });
     }

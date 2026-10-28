@@ -1017,6 +1017,32 @@ test('routes in a list of their own are one leg, travelled at once', async () =>
   assert.deepEqual(page.groups, [['pillars', 'column']]);
 });
 
+test('a built site loads its scripts, fonts and map glyphs from itself', async () => {
+  const root = copy();
+  await make(root);
+  const dist = path.join(root, 'dist');
+  for (const f of fs.readdirSync(dist, { recursive: true }).filter(f => /\.(html|js|css)$/.test(f) && !f.startsWith('vendor'))) {
+    const text = fs.readFileSync(path.join(dist, f), 'utf8');
+    for (const host of ['fonts.googleapis', 'fonts.gstatic', 'cdnjs.', 'jsdelivr', 'unpkg', 'protomaps.github.io']) assert.ok(!text.includes(host), `${f} names ${host}`);
+  }
+  const page = read(root, 'settlement-of-iceland/en/landnam/index.html');
+  for (const lib of ['maplibre-gl', 'topojson-client', 'turf']) {
+    const src = page.match(new RegExp(`<script src="\\.\\./(vendor/${lib}@[^"]+)"`))?.[1];
+    assert.ok(src && fs.existsSync(path.join(dist, src)), lib);
+  }
+  const css = read(root, 'vendor/fonts.css');
+  assert.deepEqual([...new Set([...css.matchAll(/font-family: '([^']+)'/g)].map(m => m[1]))], ['Fraunces', 'Public Sans']);
+  for (const [, file] of css.matchAll(/url\(([^)]+)\)/g)) assert.ok(fs.existsSync(path.join(dist, 'vendor', file)), file);
+  assert.ok(fs.existsSync(path.join(dist, 'vendor/glyphs/noto-sans/0-255.pbf')));
+});
+
+test('a story folder named vendor fails, since harita writes dist/vendor/', async () => {
+  const root = copy();
+  fs.cpSync(path.join(root, STORY), path.join(root, 'content/vendor'), { recursive: true });
+  edit(root, 'content/vendor/story.yaml', 'id: settlement-of-iceland', 'id: vendor');
+  await assert.rejects(make(root), /content\/vendor: harita writes dist\/vendor\/, give the story another folder name/);
+});
+
 // --- shared zones, and the zones of different stories that look like one region ---
 const ISLAND = `${STORY}/pages/020-althing/zones/island.geojson`;
 // a second story, a copy of the example under another id
