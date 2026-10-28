@@ -480,7 +480,7 @@ function mapMarkers(page, redraw){
     const src = isBattle ? B.battles[id.slice(7)] : B.markers[id];
     const data = isBattle ? { icon: 'swords', color: null, image: null, label: src.name, note: src.date } : src;
     const el = markerEl(data, isBattle);
-    if (!isBattle) { const wrap = el.querySelector('.wrap'); wrap.onmouseenter = () => tintPlaces(id, true); wrap.onmouseleave = () => tintPlaces(id, false); }
+    if (!isBattle) { const wrap = el.querySelector('.wrap'); wrap.onmouseenter = () => pointMarker(id, true); wrap.onmouseleave = () => pointMarker(id, false); }
     if (isBattle) el.onclick = e => { e.stopPropagation(); openBattle(id.slice(7)); }; // the map would otherwise close the popup on the same click
     const mk = new maplibregl.Marker({ element: el, anchor:'top' }).setLngLat(src.lnglat).addTo(m);
     ML.markers[id] = mk; requestAnimationFrame(() => requestAnimationFrame(() => mk.getElement().classList.add('in')));
@@ -496,7 +496,8 @@ function linkPlaces(){
   for (const id in ML.markers) { const el = ML.markers[id].getElement(); el.classList.toggle('named', named.has(id)); el.classList.remove('pop'); }
 }
 const popMarker = (id, on) => ML.markers[id]?.getElement().classList.toggle('pop', on);
-const tintPlaces = (id, on) => { for (const el of story.querySelectorAll(`.place[data-marker="${CSS.escape(id)}"]`)) el.classList.toggle('on', on); };
+// pointing at a marker the text names pops it and tints its places in the text
+const pointMarker = (id, on) => { popMarker(id, on); for (const el of story.querySelectorAll(`.place[data-marker="${CSS.escape(id)}"]`)) el.classList.toggle('on', on); };
 
 // ---------- panes ----------
 const navEl = $('nav'), story = $('story'), legend = $('legend');
