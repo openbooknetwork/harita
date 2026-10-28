@@ -1020,6 +1020,21 @@ test("a shared zone shows in every story that names it, in the story's family by
   await assert.rejects(make(root), /zone "island-930" is in content\/settlement-of-iceland\/shared and in content\/shared\/zones\/island-930, keep one/);
 });
 
+test('harita zones tells MultiPolygon zones apart by their parts', () => {
+  const root = copy();
+  secondStory(root);
+  const multi = (file, boxes) => { const z = JSON.parse(fs.readFileSync(path.join(root, file), 'utf8'));
+    z.geometry = { type: 'MultiPolygon', coordinates: boxes.map(([w, s, e, n]) => [[[w, s], [e, s], [e, n], [w, n], [w, s]]]) };
+    fs.writeFileSync(path.join(root, file), JSON.stringify(z)); };
+  multi(`${STORY}/pages/010-landnam/zones/southwest.geojson`, [[-22, 63.8, -21, 64.2], [-20.5, 63.4, -19.5, 63.8]]);
+  multi('content/second-story/pages/010-landnam/zones/southwest.geojson', [[-16, 64.5, -15, 65], [-15, 65.5, -14, 66]]);
+  assert.deepEqual(zones({ root, log: quiet }).map(p => p.a.id), ['island']);
+  // the same parts in another order are the same drawing
+  multi('content/second-story/pages/010-landnam/zones/southwest.geojson', [[-20.5, 63.4, -19.5, 63.8], [-22, 63.8, -21, 64.2]]);
+  const pairs = zones({ root, log: quiet });
+  assert.deepEqual(pairs.map(p => [p.a.id, p.exact]).sort(), [['island', true], ['southwest', true]]);
+});
+
 test('harita zones finds copies and near copies across stories, and the review page shows them', async () => {
   const root = copy();
   secondStory(root);

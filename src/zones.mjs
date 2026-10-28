@@ -50,20 +50,25 @@ function zoneIndex({ root = process.cwd(), onProblem = null } = {}) {
 }
 
 // The same hash for the same drawing: coordinates to about 10 m without repeated points, a hole that collapses at
-// that size dropped, the outer ring counterclockwise and the holes clockwise, each starting at its lowest point
+// that size dropped, the outer ring counterclockwise and the holes clockwise, each starting at its lowest point. A
+// MultiPolygon is its polygons in a fixed order, so the same parts listed in another order are the same drawing.
 function fingerprint(geometry) {
   const round = ([x, y]) => [Math.round(x * 1e4) / 1e4, Math.round(y * 1e4) / 1e4];
   const twice = r => r.reduce((sum, p, i) => { const q = r[(i + 1) % r.length]; return sum + p[0] * q[1] - q[0] * p[1]; }, 0);
-  const rings = geometry.coordinates.map((ring, k) => {
-    let open = [];
-    for (const c of ring.map(round)) if (!open.length || open.at(-1)[0] !== c[0] || open.at(-1)[1] !== c[1]) open.push(c);
-    if (open.length > 1 && open[0][0] === open.at(-1)[0] && open[0][1] === open.at(-1)[1]) open.pop();
-    if (open.length < 3) return null;
-    if (k === 0 ? twice(open) < 0 : twice(open) > 0) open.reverse();
-    const low = open.reduce((best, p, i) => p[0] < open[best][0] || p[0] === open[best][0] && p[1] < open[best][1] ? i : best, 0);
-    return [...open.slice(low), ...open.slice(0, low)];
-  });
-  return sha([rings[0], ...rings.slice(1).filter(Boolean).map(r => JSON.stringify(r)).sort()]);
+  const polygon = coordinates => {
+    const rings = coordinates.map((ring, k) => {
+      let open = [];
+      for (const c of ring.map(round)) if (!open.length || open.at(-1)[0] !== c[0] || open.at(-1)[1] !== c[1]) open.push(c);
+      if (open.length > 1 && open[0][0] === open.at(-1)[0] && open[0][1] === open.at(-1)[1]) open.pop();
+      if (open.length < 3) return null;
+      if (k === 0 ? twice(open) < 0 : twice(open) > 0) open.reverse();
+      const low = open.reduce((best, p, i) => p[0] < open[best][0] || p[0] === open[best][0] && p[1] < open[best][1] ? i : best, 0);
+      return [...open.slice(low), ...open.slice(0, low)];
+    });
+    return [rings[0], ...rings.slice(1).filter(Boolean).map(r => JSON.stringify(r)).sort()];
+  };
+  if (geometry.type === 'Polygon') return sha(polygon(geometry.coordinates));
+  return sha(geometry.coordinates.map(polygon).filter(p => p[0]).map(p => JSON.stringify(p)).sort());
 }
 
 // The land a zone covers: the zone cut to its clip countries, else to every country near it. Coasts then match, and
