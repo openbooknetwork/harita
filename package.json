@@ -1,6 +1,6 @@
 {
   "name": "@openbooknetwork/harita",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "The map engine of the Open Book Network: zones, routes, markers, battles and relief on a MapLibre map, under the kitap shell",
   "keywords": [
     "map",
