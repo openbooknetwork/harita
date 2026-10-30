@@ -6,10 +6,10 @@ import yaml from 'js-yaml';
 import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
 import * as turf from '@turf/turf';
-import { check, Zone, SharedZone, Story, Apart } from './schema.mjs';
+import { check, Zone, SharedZone, Story, Apart, liftStory } from './schema.mjs';
 import { world } from './world.mjs';
 import { libraryItems, storyFolders, isZone } from './folders.mjs';
-import { catalogueText, flatten } from './i18n.mjs';
+import { catalogueText, flatten } from '@openbooknetwork/kitap';
 import { hash as sha, idOf, boxesMeet } from './util.mjs';
 
 const REPORT = 0.9, SAME = 0.98; // the overlap a pair is reported at, and the one that makes it the same land
@@ -274,7 +274,7 @@ function share({ root, index, from, replace, log }) {
     const uses = path.join(o.place, 'zones.yaml');
     if (fs.existsSync(uses) && Object.hasOwn(yaml.load(fs.readFileSync(uses, 'utf8')) ?? {}, o.id)) throw new Error(`${rel(uses)} has an entry ${o.id} already`);
   }
-  const dirs = storyFolders(path.join(root, 'content'), rel), storyFile = s => path.join(dirs.get(s), 'story.yaml'), storyOf = s => check(Story, yaml.load(fs.readFileSync(storyFile(s), 'utf8')), rel(storyFile(s)));
+  const dirs = storyFolders(path.join(root, 'content'), rel), storyFile = s => path.join(dirs.get(s), 'story.yaml'), storyOf = s => { const st = check(Story, liftStory(yaml.load(fs.readFileSync(storyFile(s), 'utf8'))), rel(storyFile(s))); return { ...st, ...st.harita }; };
   const meta = storyOf(src.story), def = meta.default_language ?? meta.languages[0];
   const feat = JSON.parse(fs.readFileSync(src.file, 'utf8')), { id: _, ...props } = feat.properties;
   // the story's catalogues, read before the first write so a broken one changes nothing
@@ -342,7 +342,7 @@ const staleLine = e => `content/shared/zones/apart.yaml: ${e.zones.join(' ~ ')} 
 
 // harita zones [--like <file>] [--same-story] [--share <story>/<id> [--replace <story>/<id> ...]] [--apart <zone> <zone>
 // --why <text>]: prints the pairs of zones that look like one region and writes .cache/harita/zones.html. Returns them.
-export function zones({ root = process.cwd(), like = null, sameStory = false, share: from = null, replace = [], apart = null, why = null, cache = path.join(root, '.cache', 'harita'), log = console.log } = {}) {
+export function zones({ root = process.cwd(), like = null, sameStory = false, share: from = null, replace = [], apart = null, why = null, cache = path.join(root, '.cache', 'kitap'), log = console.log } = {}) {
   const index = zoneIndex({ root });
   if (from) { share({ root, index, from, replace, log }); return []; }
   if (replace.length) throw new Error('--replace goes with --share <story>/<zone id>');

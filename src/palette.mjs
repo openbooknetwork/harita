@@ -3,8 +3,8 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { check, Story } from './schema.mjs';
-import { pageZoneFamilies } from './build.mjs';
+import { check, Story, liftStory } from './schema.mjs';
+import { readStory } from '@openbooknetwork/kitap';
 import { storyFolders } from './folders.mjs';
 
 const PATTERNS = ['hatch', 'cross', 'dots'];
@@ -51,7 +51,7 @@ function writePattern(root, file, name, pattern) {
 
 // Check every story under root/content. Returns the pairs still alike at the end, one entry per story and pair.
 // With fix, each round writes one suggested pattern into story.yaml and checks again until no pair is left.
-export function patterns({ root = process.cwd(), fix = false, log = console.log } = {}) {
+export function patterns({ root = process.cwd(), fix = false, log = console.log, engine: harita } = {}) {
   const content = path.join(root, 'content');
   const stories = storyFolders(content, p => path.relative(root, p));
   if (!stories.size) throw new Error('content/: no story.yaml found, run this from a content project');
@@ -59,9 +59,11 @@ export function patterns({ root = process.cwd(), fix = false, log = console.log 
   for (const [id, dir] of stories) {
     const file = path.join(dir, 'story.yaml');
     for (let round = 0; round < 20; round++) {
-      const story = check(Story, yaml.load(fs.readFileSync(file, 'utf8')), path.relative(root, file));
+      const story = check(Story, liftStory(yaml.load(fs.readFileSync(file, 'utf8'))), path.relative(root, file));
       // the families each page shows, read as the build reads the story, battles and shared zones included
-      const pairs = alikePairs(story.families, pageZoneFamilies({ root, storyDir: dir }));
+      const content = readStory({ root, story: id, engine: harita });
+      const pageFamilies = content.pages.map(pg => ({ dir: pg.include ?? pg.dir, families: [...new Set(pg.harita.zones.map(z => content.state.zones[z].family))] }));
+      const pairs = alikePairs(story.harita.families, pageFamilies);
       if (!pairs.length) { if (!round) log(`${id}: every page's families differ in colour or pattern`); break; }
       const f = fix ? pairs.find(f => f.suggestion) : null;
       if (!f) { pairs.forEach(f => { log(`${id}: ${describe(f)}`); left.push({ story: id, ...f }); }); break; }

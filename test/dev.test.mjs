@@ -6,7 +6,7 @@ import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { PNG } from 'pngjs';
-import { build, dev } from '../src/index.mjs';
+import { build, dev } from './_kitap.mjs';
 
 const EXAMPLE = fileURLToPath(new URL('../example/', import.meta.url));
 const STORY = 'content/settlement-of-iceland';
@@ -48,7 +48,7 @@ test('dev rebuilds the story that changed, and every story when site.yaml change
     const missing = await at('/settlement-of-iceland/en/nowhere/');
     assert.equal(missing.status, 404);
     assert.ok((await missing.text()).includes('There is no page at this address.'));
-    assert.match((await at('/harita.js')).headers.get('content-type'), /^text\/javascript/);
+    assert.match((await at('/kitap.js')).headers.get('content-type'), /^text\/javascript/);
     // a path in redirects.json goes to its target, as the Worker sends it
     fs.writeFileSync(path.join(root, 'dist/redirects.json'), JSON.stringify({ '/images/farm-abc123.jpg': 'https://assets.example.org/images/0/farm-abc123.jpg' }));
     const old = await at('/images/farm-abc123.jpg');

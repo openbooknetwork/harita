@@ -1,47 +1,16 @@
-// Shapes of the content files. Cross references between files are checked in build.mjs.
+// Shapes of the map's content files: the harita fields of story.yaml and page.yaml, and the files under shared/ and
+// in the page folders. The book's own fields are kitap's. Cross references between files are checked in engine.mjs.
 import { z } from 'zod';
+import { schema } from '@openbooknetwork/kitap';
 
-// A plain string applies to every language; an object holds one string per language code.
-export const Translatable = z.union([z.string(), z.record(z.string().min(2).max(8), z.string())]);
-const Id = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, 'lowercase letters, digits and dashes only');
-const Lang = z.string().regex(/^[a-z]{2}(-[A-Za-z]{2,4})?$/, 'a language code like en or pt-BR');
-const Hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'a hex colour like #a06b1f');
+const { Translatable, Id, Lang, Hex, StoryCore, check } = schema;
+export { Translatable, check };
 const Lon = z.number().min(-180).max(180);
 const Lat = z.number().min(-90).max(90);
 export const Bbox = z.tuple([Lon, Lat, Lon, Lat]).refine(([w, s, e, n]) => w < e && s < n, 'bbox is [west, south, east, north]');
-// a year, a year-month, or a full date; YAML hands over a Date for the full form
-const When = z.union([z.number().int(), z.string(), z.date()]).transform(v => v instanceof Date ? v.toISOString().slice(0, 10) : String(v))
-  .refine(s => /^\d{4}(-\d{2})?(-\d{2})?$/.test(s), 'YYYY, YYYY-MM or YYYY-MM-DD');
 
-// land: up to eight tints for the countries, neighbours get different ones; without it every country is paper2
-const ThemeTokens = z.object({ paper: Hex, paper2: Hex, sea: Hex, ink: Hex, ink2: Hex, rule: Hex, accent: Hex, panel: Hex, route: Hex, border: Hex, land: z.array(Hex).min(2).max(8).optional() }).strict();
-export const Theme = z.object({ name: Translatable.optional(), light: ThemeTokens, dark: ThemeTokens }).strict();
-export const Themes = z.record(Id, Theme);
-
-export const Site = z.object({
-  title: Translatable.optional(),
-  intro: Translatable.optional(),
-  languages: z.array(Lang).min(1).optional(),
-  default_language: Lang.optional(),
-  stories: z.array(Id).optional(),
-  theme: Id.optional(),
-  themes: Themes.optional(),
-  url: z.string().url().optional(), // where the site is published, for canonical links, sitemaps and llms.txt
-  repository: z.string().url().optional(), // the content repository: a Contribute link on the main page, a source link per story
-  branch: z.string().default('main'),
-  // the object store that holds the images and elevation tiles: url serves them, bucket and endpoint take uploads
-  assets: z.object({ url: z.string().url().refine(u => u.endsWith('/'), 'ends in /'), bucket: z.string().min(1), endpoint: z.string().url() }).strict().optional(),
-  pages: z.object({ bucket: z.string().min(1) }).strict().optional(), // the bucket harita deploy writes dist/ to, in the account of assets.endpoint
-}).strict();
-
-export const Story = z.object({
-  id: Id,
-  title: Translatable,
-  summary: Translatable.optional(),
-  span: Translatable.optional(),
-  cover: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, 'the id of an image folder the story can show, harita image <file> <name> --story <story> makes one').optional(), // the card on the main page
-  languages: z.array(Lang).min(1),
-  default_language: Lang.optional(),
+// The map's fields of story.yaml, under harita:
+export const StoryMap = z.object({
   extent: Bbox,
   land: z.array(z.string()).min(1),
   countries: z.array(z.string()).min(1),
@@ -50,28 +19,23 @@ export const Story = z.object({
   families: z.record(Id, z.object({ priority: z.number().int(), color: Hex, color_dark: Hex.optional(), pattern: z.enum(['hatch', 'cross', 'dots']).optional(), aliases: z.array(Id).optional() }).strict()),
   smoothing: z.number().int().min(0).max(10).default(4),
   max_zoom: z.number().min(11).max(16).default(11), // a battle's pages may zoom closer, and the relief tiles follow to zoom 15
-  theme: Id.optional(),
   // country names on the map; names overrides the Natural Earth name, hide leaves a country unlabelled
   labels: z.object({ countries: z.boolean().default(false), names: z.record(z.string(), Translatable).default({}), hide: z.array(z.string()).default([]) }).strict().optional(),
 }).strict();
-
-export const Group = z.object({ title: Translatable.optional() }).strict();
-
-// image.yaml in an image folder, content/shared/images/<id>/ or content/<story>/shared/images/<id>/. source: the page
-// the original came from, such as its Commons file page. url: where the original downloads from. file and sha256: the
-// original's name in the folder and its hash, which name its objects in the asset store.
-export const ImageFolder = z.object({ caption: Translatable, credit: Translatable.optional(), default_language: Lang.default('en'),
-  source: z.string().url().optional(), url: z.string().url().optional(),
-  file: z.string().regex(/^image\.(jpe?g|png|webp|svg|gif)$/, 'image.<ext>, the original in this folder, harita rehash writes it'),
-  sha256: z.string().regex(/^[0-9a-f]{64}$/, '64 hex digits, harita rehash writes it') }).strict();
+// story.yaml whole, as harita's own commands read it: the book's fields and the map's
+export const Story = z.object({ ...StoryCore, harita: StoryMap }).strict();
+// a story.yaml from before the split writes the map's fields at the top level; they read as if under harita:
+export function liftStory(data) {
+  if (!data || typeof data !== 'object') return data;
+  for (const k of Object.keys(StoryMap.shape)) if (k in data && !(k in (data.harita ?? {}))) { (data.harita ??= {})[k] = data[k]; delete data[k]; }
+  return data;
+}
 
 // A tilted 3D view over the terrain: pitch from straight down, bearing clockwise from north, heights times exaggeration.
 export const Camera = z.object({ pitch: z.number().min(10).max(60).default(50), bearing: z.number().min(-180).max(180).default(0), exaggeration: z.number().min(0.5).max(5).default(2) }).strict();
 
-export const Page = z.object({
-  date: Translatable,
-  title: Translatable,
-  when: z.union([When, z.object({ from: When, to: When.optional() }).strict()]).optional(),
+// The map's fields of page.yaml, under harita:
+export const PageMap = z.object({
   bbox: Bbox,
   zones: z.array(Id).default([]),
   routes: z.array(z.union([Id, z.array(Id).min(2)])).default([]), // a list in the list: routes travelled at once, one leg
@@ -81,8 +45,6 @@ export const Page = z.object({
     .refine(c => c !== false, 'pages open flat until the reader picks 3D, so camera: false has no use: remove it'),
   // an emblem drawn on the map while the page is open: plugins/emblems/<kind>.mjs, else one harita ships
   emblem: z.object({ kind: Id }).passthrough().optional(),
-  images: z.unknown().optional().refine(v => v === undefined, 'images live in image folders, content/<story>/shared/images/<name>-<six hex digits>/, and harita image <file> <name> makes one'),
-  sources: z.array(Translatable).default([]),
   // map data the page draws beyond the base map, credited in an "Other sources" popup on the map
   map_sources: z.array(z.object({ text: Translatable, url: z.string().url().optional() }).strict()).default([]),
 }).strict();
@@ -172,10 +134,3 @@ export const Route = z.object({
   geometry: z.object({ type: z.literal('LineString'), coordinates: z.array(z.tuple([Lon, Lat])).min(2) }),
 });
 
-// Parse or throw one error that names the file and every bad field.
-export function check(schema, data, file) {
-  const r = schema.safeParse(data);
-  if (r.success) return r.data;
-  const lines = r.error.issues.map(i => `  ${i.path.length ? i.path.join('.') : '(root)'}: ${i.message}`);
-  throw new Error(`${file}:\n${lines.join('\n')}`);
-}

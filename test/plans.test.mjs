@@ -6,7 +6,7 @@ import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { frame, planWriter, coast } from '../src/plans.mjs';
-import { buildPages } from '../src/build.mjs';
+import { buildPages } from './_kitap.mjs';
 
 const EXAMPLE = fileURLToPath(new URL('../example/', import.meta.url));
 const near = (a, b, eps = 1e-5) => assert.ok(Math.abs(a - b) <= eps, `${a} is not ${b}`);

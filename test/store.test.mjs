@@ -12,10 +12,7 @@ import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import sharp from 'sharp';
 import { PNG } from 'pngjs';
-import { build, check, deploy, i18n, image, rehash, upload } from '../src/index.mjs';
-import { storyAssets } from '../src/build.mjs';
-import { storeReader } from '../src/store.mjs';
-import { webpSizes } from '../src/upload.mjs';
+import { build, check, deploy, i18n, image, rehash, upload, storyAssets, storeReader, webpSizes, flat } from './_kitap.mjs';
 
 const EXAMPLE = fileURLToPath(new URL('../example/', import.meta.url));
 const STORY = 'content/settlement-of-iceland';
@@ -66,7 +63,7 @@ const reset = () => { server.objects.clear(); server.site.clear(); server.files.
 const edit = (root, file, from, to) => fs.writeFileSync(path.join(root, file), fs.readFileSync(path.join(root, file), 'utf8').replace(from, to));
 const append = (root, file, text) => fs.appendFileSync(path.join(root, file), '\n' + text + '\n');
 const read = (root, f) => fs.readFileSync(path.join(root, 'dist', f), 'utf8');
-const bundleOf = root => { const js = read(root, 'settlement-of-iceland/story.js'); return JSON.parse(js.slice('const BUNDLE = '.length, js.lastIndexOf(';'))); };
+const bundleOf = root => { const js = read(root, 'settlement-of-iceland/story.js'); return flat(JSON.parse(js.slice('const BUNDLE = '.length, js.lastIndexOf(';')))); };
 // a copy of the example with the store in site.yaml
 function project({ url = null } = {}) {
   reset();
@@ -159,7 +156,7 @@ test('harita upload puts the missing objects with their headers, then the tree, 
   assert.equal(server.objects.get('meta/settlement-of-iceland/latest.json').cache, 'no-cache');
   assert.equal(JSON.parse(server.objects.get('meta/settlement-of-iceland/latest.json').bytes).root, tree.root);
   assert.equal(uploaded.length, 3 + tiles.length);
-  assert.match(lines.at(-1), new RegExp(`^uploaded 1 image \\(0\\.0 MB\\) and ${tiles.length} tiles \\(\\d+\\.\\d MB\\), 0 were in the store$`));
+  assert.match(lines.at(-1), new RegExp(`^uploaded 1 image \\(0\\.0 MB\\) and ${tiles.length} elevation tiles \\(\\d+\\.\\d MB\\), 0 were in the store$`));
   // a second run lists the bucket, finds the tree of the same root and puts nothing
   server.requests = [];
   assert.deepEqual(await put(root), []);
@@ -221,7 +218,7 @@ test('--dry-run lists what would go, reads through the public URL alone and writ
   assert.ok(server.requests.every(r => /^(GET|HEAD) \/pub\//.test(r)));
   assert.equal(server.objects.size, 0);
   assert.match(lines[0], /^settlement-of-iceland: would upload the images of content\/settlement-of-iceland\/shared\/images\/farm-[0-9a-f]{6} and \d+ elevation tiles$/);
-  assert.match(lines.at(-1), /^would upload 1 image and \d+ tiles, 0 objects are in the store$/);
+  assert.match(lines.at(-1), /^would upload 1 image and \d+ elevation tiles, 0 objects are in the store$/);
   delete process.env.AWS_ACCESS_KEY_ID;
   try { await assert.rejects(put(root), /set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY/); } finally { process.env.AWS_ACCESS_KEY_ID = key; }
 });
@@ -250,17 +247,17 @@ test('harita image and harita upload refuse an original that is too large, of an
 
 test('harita build --strict asks one request of an unchanged story, asks only for new keys, and names harita upload', async () => {
   const root = project(), farm = await shown(root, 'farm', svg('farm'));
-  await assert.rejects(make(root, { strict: true }), /content\/settlement-of-iceland: the store holds no upload of this story, harita upload --story settlement-of-iceland puts its images and tiles there/);
+  await assert.rejects(make(root, { strict: true }), /content\/settlement-of-iceland: the store holds no upload of this story, kitap upload --story settlement-of-iceland puts its objects there/);
   await put(root);
   server.requests = [];
   const lines = [];
   await make(root, { strict: true, log: l => lines.push(l) });
   assert.equal(server.requests.length, 1);
-  assert.ok(lines.includes('the store holds every image and tile of 1 story (1 request)'));
+  assert.ok(lines.includes('the store holds every object of 1 story (1 request)'));
   // a new image: the tree in latest.json matches every directory but the new one, whose three keys are asked for
   const field = await shown(root, 'field', svg('field'));
   server.requests = [];
-  await assert.rejects(make(root, { strict: true }), new RegExp(`content/settlement-of-iceland: the store lacks the images of ${field.dir}, harita upload --story settlement-of-iceland puts them there`));
+  await assert.rejects(make(root, { strict: true }), new RegExp(`content/settlement-of-iceland: the store lacks the images of ${field.dir}, kitap upload --story settlement-of-iceland puts them there`));
   assert.deepEqual(server.requests.filter(r => !r.includes('/meta/')).sort(), keysOf(root, field).map(k => `GET /pub/${k}`).sort());
   // a folder moved to content/shared/images/ keeps its keys, which the stored tree lists, so the check asks for none
   await put(root);
@@ -287,7 +284,7 @@ test('a build without assets or --local-assets names the assets block', async ()
   reset();
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'harita-store-'));
   fs.cpSync(EXAMPLE, root, { recursive: true });
-  await assert.rejects(make(root), /site\.yaml: add an assets block with the url, bucket and endpoint of the store for the images and elevation tiles, or build with --local-assets/);
+  await assert.rejects(make(root), /site\.yaml: add an assets block with the url, bucket and endpoint of the store for the images and the objects the pages show, or build with --local-assets/);
 });
 
 test('a strict build fails while git tracks an image file under content/', async () => {
@@ -399,10 +396,10 @@ test('harita deploy --dry-run lists what would go and writes nothing, and withou
   assert.deepEqual([...server.site.keys()], ['old/index.html']);
   const bare = project();
   await make(bare);
-  await assert.rejects(site(bare), /site\.yaml: add a pages block with the bucket that holds the site, harita deploy writes dist\/ there/);
+  await assert.rejects(site(bare), /site\.yaml: add a pages block with the bucket that holds the site, kitap deploy writes dist\/ there/);
   const key = process.env.AWS_ACCESS_KEY_ID;
   delete process.env.AWS_ACCESS_KEY_ID;
-  try { await assert.rejects(site(root), /harita deploy writes with the S3 credentials of an API token for the bucket: set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY/); } finally { process.env.AWS_ACCESS_KEY_ID = key; }
+  try { await assert.rejects(site(root), /kitap deploy writes with the S3 credentials of an API token for the bucket: set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY/); } finally { process.env.AWS_ACCESS_KEY_ID = key; }
 });
 
 test('a request that fails on the network names the error code after its retries', async () => {

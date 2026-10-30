@@ -1,7 +1,7 @@
 {
-  "name": "@openhistoryatlas/harita",
-  "version": "0.5.13",
-  "description": "Interactive timelines on a map: a static site with a page per step in every language, built from a content folder",
+  "name": "@openbooknetwork/harita",
+  "version": "0.6.0",
+  "description": "The map engine of the Open Book Network: zones, routes, markers, battles and relief on a MapLibre map, under the kitap shell",
   "keywords": [
     "map",
     "timeline",
@@ -14,11 +14,11 @@
   "author": "Can Bascil",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/openhistoryatlas/harita.git"
+    "url": "git+https://github.com/openbooknetwork/harita.git"
   },
-  "homepage": "https://github.com/openhistoryatlas/harita#readme",
+  "homepage": "https://github.com/openbooknetwork/harita#readme",
   "bugs": {
-    "url": "https://github.com/openhistoryatlas/harita/issues"
+    "url": "https://github.com/openbooknetwork/harita/issues"
   },
   "type": "module",
   "engines": {
@@ -37,31 +37,30 @@
   "files": [
     "bin",
     "src",
-    "glyphs"
+    "glyphs",
+    "scripts/nest-map-fields.mjs"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test test/*.test.mjs",
     "prepublishOnly": "npm test"
   },
   "dependencies": {
-    "@fontsource-variable/fraunces": "^5.3.0",
-    "@fontsource-variable/public-sans": "^5.3.0",
+    "@openbooknetwork/kitap": "^0.1.0",
     "@turf/turf": "^7.4.0",
-    "aws4fetch": "^1.0.20",
     "js-yaml": "^4.1.0",
-    "lucide-static": "^1.49.0",
     "maplibre-gl": "5.24.0",
-    "marked": "^15.0.0",
     "pngjs": "^7.0.0",
     "polylabel": "^2.1.0",
-    "sharp": "^0.35.5",
     "topojson-client": "^3.1.0",
     "topojson-server": "^3.0.1",
     "topojson-simplify": "^3.0.3",
     "world-atlas": "^2.0.2",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "sharp": "^0.35.5"
   }
 }

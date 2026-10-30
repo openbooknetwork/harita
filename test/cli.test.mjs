@@ -7,7 +7,7 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { PNG } from 'pngjs';
-import { build } from '../src/index.mjs';
+import { build } from './_kitap.mjs';
 
 const BIN = fileURLToPath(new URL('../bin/harita.mjs', import.meta.url));
 const EXAMPLE = fileURLToPath(new URL('../example/', import.meta.url));
@@ -73,7 +73,7 @@ test('image writes a story image folder and prints its name, or the usage when t
   const id = r.stdout.match(/name it as (farm-[0-9a-f]{6})\n$/)[1];
   assert.match(fs.readFileSync(path.join(root, 'content/settlement-of-iceland/shared/images', id, 'image.yaml'), 'utf8'), /^caption: The farm\nfile: image\.png\nsha256: [0-9a-f]{64}\n$/);
   assert.match(run(root, 'rehash').stdout, /^wrote the file and sha256 of 0 image folders\n$/);
-  assert.match(run(root, 'image', 'farm.png', 'farm').stderr, /^error: usage: harita image <file or url> <name> --caption <text>/);
+  assert.match(run(root, 'image', 'farm.png', 'farm').stderr, /^error: usage: kitap image <file or url> <name> --caption <text>/);
 });
 
 test('zones prints the pairs it finds and where the review page is', () => {
@@ -81,8 +81,8 @@ test('zones prints the pairs it finds and where the review page is', () => {
   fs.cpSync(EXAMPLE, root, { recursive: true });
   const r = run(root, 'zones');
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.stdout, 'no pairs, see .cache/harita/zones.html\n');
-  assert.ok(fs.existsSync(path.join(root, '.cache/harita/zones.html')));
+  assert.equal(r.stdout, 'no pairs, see .cache/kitap/zones.html\n');
+  assert.ok(fs.existsSync(path.join(root, '.cache/kitap/zones.html')));
 });
 
 test('zones refuses a zone id without its own --replace', () => {

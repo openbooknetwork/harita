@@ -1,53 +1,17 @@
-# Interface strings for tr. Content strings live in the content project.
-name: Türkçe
-prev: Önceki
-next: Sonraki
-close: Kapat
-sources: Kaynaklar
+# Interface strings of the map for tr, laid over the book's.
 chronology: Kronoloji
-language: Dil
 hint: Haritayı sürükleyip yakınlaştırın, sonra adım adım ilerleyin.
-pages: sayfa
-open: Aç
-theme: Tema
-expand_all: Tümünü aç
+tab_map: Harita
+map_data: Harita verileri
+map_view: Harita görünümü
+view_2d: 2B
+view_3d: 3B
+layout_center: Harita ortada
 battle: Muharebe
 result: Sonuç
 commanders: Komutanlar
 strength: Kuvvet
 casualties: Kayıplar
-source: Kaynak
-collapse_all: Tümünü kapat
-read_more: Devamını oku
-hide: Gizle
 legend: Lejant
-tab_map: Harita
-tab_text: Metin
-contents: İçindekiler
-contribute: Katkıda bulun
-story_source: GitHub’da kaynağı
-generated_by: '{harita} ile oluşturuldu'
 map_failed_cdn: Harita kitaplığı yüklenemedi. Bağlantıyı denetleyip sayfayı yenileyin.
 map_failed_webgl: Harita için WebGL gerekiyor, bu tarayıcıda yok. Metin ve kronoloji yine çalışır.
-previous_image: Önceki görsel
-next_image: Sonraki görsel
-search_stories: Hikâye ara
-no_match: "“{q}” ile eşleşen hikâye yok."
-map_data: Harita verileri
-other_sources: Diğer kaynaklar
-map_view: Harita görünümü
-view_2d: 2B
-view_3d: 3B
-start: Başla
-not_found: Bu adreste bir sayfa yok.
-settings: Ayarlar
-layout: Yerleşim
-layout_center: Harita ortada
-layout_left: Metin solda
-layout_right: Metin sağda
-themes:
-  cool: Soğuk
-  mono: Tek renk
-  navy: Lacivert
-  parchment: Parşömen
-  sepia: Sepya

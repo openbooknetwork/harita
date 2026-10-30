@@ -1,5 +1,27 @@
 # Harita
 
+The map engine of the Open Book Network: zones, routes, markers, battles and relief on a MapLibre map, under the
+[kitap](https://github.com/openbooknetwork/kitap) shell. Kitap builds the book, the pages, texts, images,
+translations and the site; harita draws the map in each page's viewport and keeps the elevation tiles in the store.
+
+`harita build`, `check`, `dev`, `i18n`, `image`, `rehash`, `upload` and `deploy` are kitap's commands run with the
+map engine. `harita zones`, `patterns` and `coast` are the map's own. A story's map fields sit under `harita:` in
+story.yaml and page.yaml; a file that still writes them at the top level reads the same.
+
+```yaml
+# page.yaml
+date: "1420"
+title: "Plzeň and Nekmíř"
+harita:
+  bbox: [12.95, 49.55, 14.6, 50.2]
+  zones: [prague-1420]
+  routes: [zizka-1419-plzen]
+  markers: [plzen-1419]
+```
+
+The rest of this README describes the map's content files as before the split.
+
+
 An interactive map that steps through a timeline. Each page sets the map view, the occupation zones,
 the routes and the markers, and shows a text with images and sources beside the map. One build turns a
 content folder into a static site with a page per step in every language.

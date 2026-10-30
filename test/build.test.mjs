@@ -8,9 +8,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { PNG } from 'pngjs';
 import * as turf from '@turf/turf';
-import { build, check, i18n, image, patterns, rehash, schema, zones } from '../src/index.mjs';
+import { build, check, i18n, image, patterns, rehash, schema, zones, describe, flat } from './_kitap.mjs';
 import { cut, terrainPlan, BASE_ZOOM } from '../src/terrain.mjs';
-import { describe } from '../src/pages.mjs';
 import * as tc from 'topojson-client';
 
 const EXAMPLE = fileURLToPath(new URL('../example/', import.meta.url));
@@ -32,7 +31,7 @@ const CACHE = fs.mkdtempSync(path.join(os.tmpdir(), 'harita-cache-'));
 let fetched = 0;
 const elevation = async () => { fetched++; return TILE; };
 const make = (root, opts = {}) => build({ root, log: quiet, cache: CACHE, elevation, localAssets: true, ...opts });
-const bundleOf = (root, id = 'settlement-of-iceland') => { const js = fs.readFileSync(path.join(root, 'dist', id, 'story.js'), 'utf8'); return JSON.parse(js.slice('const BUNDLE = '.length, js.lastIndexOf(';'))); };
+const bundleOf = (root, id = 'settlement-of-iceland') => { const js = fs.readFileSync(path.join(root, 'dist', id, 'story.js'), 'utf8'); return flat(JSON.parse(js.slice('const BUNDLE = '.length, js.lastIndexOf(';')))); };
 // a zone's outline, decoded from the story's zone topology
 const zoneGeometry = (B, id) => tc.feature(B.zoneShapes, B.zoneShapes.objects.zones.geometries.find(g => g.id === id)).geometry;
 const append = (root, file, text) => fs.appendFileSync(path.join(root, file), '\n' + text + '\n');
@@ -77,8 +76,8 @@ test('build writes the site index and one page per story', async () => {
   assert.ok(Object.values(bundleOf(root).zones).every(z => Number.isInteger(z.area) && z.area > 0), 'each zone ships its area in km2');
   const index = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8');
   assert.ok(index.includes('const SITE = {"title":{"en":"Example histories"}'));
-  const app = fs.readFileSync(path.join(root, 'dist/harita.js'), 'utf8');
-  for (const html of [app, index]) assert.ok(html.includes("const REPO = 'https://github.com/openhistoryatlas/harita';"));
+  const app = fs.readFileSync(path.join(root, 'dist/kitap.js'), 'utf8');
+  for (const html of [app, index]) assert.ok(html.includes("const REPO = 'https://github.com/openbooknetwork/kitap';"));
   assert.ok(lines.includes('wrote dist/index.html (1 stories)'));
 });
 
@@ -243,8 +242,8 @@ test('a MultiPolygon zone holds a state whose land lies in parts, and each part 
 });
 
 test('schema fills defaults and lists every bad field at once', async () => {
-  const page = schema.check(schema.Page, { date: '930', title: 'x', bbox: [-25, 63, -13, 67] }, 'page.yaml');
-  assert.deepEqual([page.zones, page.routes, page.markers, page.sources], [[], [], [], []]);
+  const page = schema.check(schema.PageMap, { bbox: [-25, 63, -13, 67] }, 'page.yaml');
+  assert.deepEqual([page.zones, page.routes, page.markers, page.map_sources], [[], [], [], []]);
   assert.throws(() => schema.check(schema.Story, { id: 'Bad Id', title: 'x' }, 'story.yaml'), err => {
     assert.match(err.message, /^story\.yaml:\n/);
     assert.match(err.message, /\n  id: lowercase letters/);
@@ -254,7 +253,7 @@ test('schema fills defaults and lists every bad field at once', async () => {
 });
 
 test('a language harita does not ship gets an interface catalogue and counts its gaps', async () => {
-  const { i18n } = await import('../src/index.mjs');
+  const { i18n } = await import('./_kitap.mjs');
   const root = copy();
   addLanguage(root, 'de');
   i18n({ root, lang: 'de', log: quiet });
@@ -325,9 +324,9 @@ test('a page lists its other map sources with links, in every language', async (
   append(root, `${STORY}/pages/010-landnam/page.yaml`, 'map_sources:\n  - text: "Lake Þingvallavatn: © OpenStreetMap contributors"\n    url: https://www.openstreetmap.org/copyright');
   await make(root);
   const [first, second] = bundleOf(root).pages;
-  assert.deepEqual(first.mapSources.en, [{ text: 'Lake Þingvallavatn: © OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' }]);
-  assert.deepEqual(Object.keys(first.mapSources), Object.keys(first.sources));
-  assert.deepEqual(second.mapSources.en, []);
+  assert.deepEqual(first.credits.en, [{ text: 'Lake Þingvallavatn: © OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' }]);
+  assert.deepEqual(Object.keys(first.credits), Object.keys(first.sources));
+  assert.deepEqual(second.credits.en, []);
 });
 
 test('a language written right to left ships dir rtl, English ltr', async () => {
@@ -398,7 +397,7 @@ test('a page camera reaches the map, and a second build reads the tiles from the
 });
 
 test('names, citations and credits show in the source language until a catalogue translates them', async () => {
-  const { i18n } = await import('../src/index.mjs');
+  const { i18n } = await import('./_kitap.mjs');
   const root = copy();
   addLanguage(root, 'tr');
   skirmish(root, '{ name: Settlers, commanders: [Ingólfr Arnarson] }');
@@ -782,7 +781,7 @@ test('a story page that names a battle shows its card alone, and the catalogue k
 test('a battle placed out of date order names its include folder', async () => {
   const root = copy();
   fs.renameSync(path.join(root, STORY, 'pages/040-althing-battle'), path.join(root, STORY, 'pages/025-althing-battle'));
-  await assert.rejects(make(root), /030-kristnitaka starts 1000-01-01, before content\/shared\/battles\/althing-1012\/pages\/020-fight which starts 1012-01-01; renumber content\/settlement-of-iceland\/pages\/025-althing-battle to move the battle/);
+  await assert.rejects(make(root), /030-kristnitaka starts 1000-01-01, before content\/shared\/battles\/althing-1012\/pages\/020-fight which starts 1012-01-01; renumber content\/settlement-of-iceland\/pages\/025-althing-battle to move it/);
 });
 
 test('a battle colour takes the story family of its id or alias, else its own with a warning', async () => {
@@ -848,7 +847,7 @@ test('harita image makes an image folder that texts, markers and battle cards sh
   assert.deepEqual(B.battles['althing-1012'].images, [shared]);
   assert.ok(fs.existsSync(path.join(root, 'dist/assets', ownKey)) && fs.existsSync(path.join(root, 'dist/assets', sharedKey)));
   assert.ok(!B.images[unused] && !fs.existsSync(path.join(root, 'dist/assets', unusedKey)));
-  assert.ok(lines.includes('  image folders tr: 0 of 2 strings translated, 2 missing (harita i18n tr)'));
+  assert.ok(lines.includes('  image folders tr: 0 of 2 strings translated, 2 missing (kitap i18n tr)'));
   i18n({ root, lang: 'tr', log: quiet });
   assert.match(fs.readFileSync(path.join(root, STORY, `shared/images/${own}/i18n/tr.yaml`), 'utf8'), /^# The farm\nimage\.caption: ""$/m);
 });
@@ -893,7 +892,7 @@ test('a strict build holds each original here to its sha256, and harita rehash w
   append(root, `${STORY}/pages/010-landnam/text/en.md`, `@image ${id}`);
   await make(root, { strict: true });
   fs.writeFileSync(path.join(root, folder, 'image.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><title>new</title></svg>');
-  await assert.rejects(make(root, { strict: true }), new RegExp(`${id}/image\\.yaml: image\\.svg changed after its sha256 was written, harita rehash writes the new one`));
+  await assert.rejects(make(root, { strict: true }), new RegExp(`${id}/image\\.yaml: image\\.svg changed after its sha256 was written, kitap rehash writes the new one`));
   await make(root);
   edit(root, `${folder}/image.yaml`, /^file:.*\n/m, 'url: https://example.org/farm.svg\n');
   await assert.rejects(make(root), /image\.yaml:\n\s+file: /);
@@ -902,7 +901,7 @@ test('a strict build holds each original here to its sha256, and harita rehash w
   await make(root, { strict: true });
   assert.deepEqual(rehash({ root, log: quiet }), []);
   edit(root, `${folder}/image.yaml`, 'file: image.svg', 'file: image.png');
-  await assert.rejects(make(root), /image\.yaml: file names image\.png and the folder holds image\.svg, harita rehash writes the file it holds/);
+  await assert.rejects(make(root), /image\.yaml: file names image\.png and the folder holds image\.svg, kitap rehash writes the file it holds/);
 });
 
 test("a story's cover can name an image, and the image ships once", async () => {
@@ -931,9 +930,9 @@ test('an image folder used the wrong way stops the build, naming the folder', as
     [root => { for (const d of ['content/shared/images/farm-a1b2c3', `${STORY}/shared/images/farm-a1b2c3`]) folder(root, d, { 'image.svg': svg, 'image.yaml': 'caption: A farm\n' }); use(root, 'farm-a1b2c3'); },
       /010-landnam\/text\/en\.md: image "farm-a1b2c3" is in content\/settlement-of-iceland\/shared\/images\/farm-a1b2c3 and content\/shared\/images\/farm-a1b2c3, keep one/],
     // every image is an image folder
-    [root => append(root, `${STORY}/pages/010-landnam/page.yaml`, 'images:\n  farm: { file: farm.svg, caption: A farm }'), /010-landnam\/page\.yaml:\n  images: images live in image folders, content\/<story>\/shared\/images\/<name>-<six hex digits>\/, and harita image <file> <name> makes one/],
+    [root => append(root, `${STORY}/pages/010-landnam/page.yaml`, 'images:\n  farm: { file: farm.svg, caption: A farm }'), /010-landnam\/page\.yaml:\n  images: images live in image folders, content\/<story>\/shared\/images\/<name>-<six hex digits>\/, and kitap image <file> <name> makes one/],
     [root => fs.writeFileSync(path.join(root, STORY, 'shared/images.yaml'), 'farm: { file: farm.svg, caption: A farm }\n'), /shared\/images\.yaml: images live in image folders/],
-    [root => append(root, `${STORY}/story.yaml`, 'cover: cover.jpg'), /story\.yaml:\n  cover: the id of an image folder the story can show, harita image <file> <name> --story <story> makes one/],
+    [root => append(root, `${STORY}/story.yaml`, 'cover: cover.jpg'), /story\.yaml:\n  cover: the id of an image folder the story can show, kitap image <file> <name> --story <story> makes one/],
     [root => { folder(root, 'content/shared/images/farm-a1b2c3', { 'image.svg': svg, 'image.yaml': 'caption: A farm\n' }); use(root, '../images/farm-a1b2c3'); }, /010-landnam\/text\/en\.md: unknown image "\.\.\/images\/farm-a1b2c3", an image id is lowercase letters, digits and dashes/],
     // a shared battle sees the shared image folders alone, so it works in any story
     [root => { folder(root, `${STORY}/shared/images/farm-a1b2c3`, { 'image.svg': svg, 'image.yaml': 'caption: A farm\n' }); append(root, `${BATTLE}/battle.yaml`, 'images: [farm-a1b2c3]'); }, /althing-1012\/battle\.yaml: unknown image "farm-a1b2c3"/],
@@ -975,7 +974,7 @@ test('a battle folder or an include used the wrong way stops the build, naming t
   const write = (root, file, text) => { fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); fs.writeFileSync(path.join(root, file), text); };
   const cases = [
     [root => write(root, `${STORY}/shared/battles.yaml`, 'x: {}\n'), /settlement-of-iceland\/shared\/battles\.yaml: battles live in folders now, one per battle/],
-    [root => fs.copyFileSync(path.join(root, STORY, 'story.yaml'), path.join(root, 'content/shared/story.yaml')), /content\/shared\/story\.yaml: content\/shared\/ holds the battles, images and zones stories share/],
+    [root => fs.copyFileSync(path.join(root, STORY, 'story.yaml'), path.join(root, 'content/shared/story.yaml')), /content\/shared\/story\.yaml: content\/shared\/ holds what the stories share/],
     [root => edit(root, INCLUDE, 'battle: althing-1012', 'battle: althing-1013'), /040-althing-battle\/include\.yaml: unknown battle "althing-1013", add content\/settlement-of-iceland\/shared\/battles\/althing-1013\/battle\.yaml or content\/shared\/battles\/althing-1013\/battle\.yaml/],
     [root => append(root, `${STORY}/pages/010-landnam/page.yaml`, 'battle: nowhere-900'), /010-landnam\/page\.yaml: unknown battle "nowhere-900"/],
     [root => fs.cpSync(path.join(root, BATTLE), path.join(root, STORY, 'shared/battles/althing-1012'), { recursive: true }), /battle "althing-1012" is in both content\/settlement-of-iceland\/shared\/battles\/althing-1012 and content\/shared\/battles\/althing-1012, keep one/],
@@ -1016,7 +1015,7 @@ test('a route takes the colour of the family it names', async () => {
   colour(root, 'settled');
   await make(root);
   assert.equal(bundleOf(root).routes.pillars.color, 'settled');
-  new vm.Script(read(root, 'harita.js')); // the page script parses
+  for (const f of ['kitap.js', 'harita.js']) new vm.Script(read(root, f)); // the page scripts parse
   const bad = copy();
   colour(bad, 'norse');
   await assert.rejects(make(bad), /pillars\.geojson: route "pillars" uses unknown family "norse"/);
@@ -1056,7 +1055,7 @@ test('a story folder named vendor fails, since harita writes dist/vendor/', asyn
   const root = copy();
   fs.cpSync(path.join(root, STORY), path.join(root, 'content/vendor'), { recursive: true });
   edit(root, 'content/vendor/story.yaml', 'id: settlement-of-iceland', 'id: vendor');
-  await assert.rejects(make(root), /content\/vendor: harita writes dist\/vendor\/, give the story another folder name/);
+  await assert.rejects(make(root), /content\/vendor: kitap writes dist\/vendor\/, give the story another folder name/);
 });
 
 // --- shared zones, and the zones of different stories that look like one region ---
@@ -1084,7 +1083,7 @@ test("a shared zone shows in every story that names it, in the story's family by
   const B = bundleOf(root);
   assert.equal(B.zones['island-930'].family, 'settled');
   assert.ok(zoneGeometry(B, 'island-930'), 'the story cleans the shared zone with its own');
-  assert.ok(lines.includes('  zone folders tr: 0 of 1 strings translated, 1 missing (harita i18n tr)'));
+  assert.ok(lines.includes('  zone folders tr: 0 of 1 strings translated, 1 missing (kitap i18n tr)'));
   i18n({ root, lang: 'tr', log: quiet });
   assert.match(fs.readFileSync(path.join(root, shared, 'i18n/tr.yaml'), 'utf8'), /^zone\.name: ""$/m);
   // the same id in the story and in content/shared/zones/ is one too many
@@ -1116,7 +1115,7 @@ test('harita zones finds copies and near copies across stories, and the review p
   assert.deepEqual(pairs.map(p => p.a.id).sort(), ['island', 'southwest']);
   // a plain build warns about the copies and writes the review page, a strict one stops
   const plain = [];
-  fs.rmSync(path.join(root, '.cache/harita/zones.html'));
+  fs.rmSync(path.join(root, '.cache/kitap/zones.html'));
   await make(root, { log: l => plain.push(l) });
   assert.ok(plain.some(l => /^warning: second-story\/island ~ settlement-of-iceland\/island  the same drawing/.test(l)) && fs.existsSync(path.join(CACHE, 'zones.html')));
   assert.deepEqual(pairs.map(p => p.exact), [true, true]);
@@ -1128,7 +1127,7 @@ test('harita zones finds copies and near copies across stories, and the review p
   const lines = [];
   await make(root, { strict: true, log: l => lines.push(l) });
   assert.ok(lines.some(l => /^warning: second-story\/island ~ settlement-of-iceland\/island  \d+% overlap, the same land.*, families settled \/ settled, see .*zones\.html$/.test(l)), lines.filter(l => l.startsWith('warning')).join('\n'));
-  const page = fs.readFileSync(path.join(root, '.cache/harita/zones.html'), 'utf8');
+  const page = fs.readFileSync(path.join(root, '.cache/kitap/zones.html'), 'utf8');
   assert.ok(page.includes('second-story/island') && page.includes('maplibre-gl'));
   // inside one story, dated shapes of a family overlap on purpose: those pairs show on request only
   fs.copyFileSync(path.join(root, ISLAND), path.join(root, `${STORY}/pages/030-kristnitaka/zones-copy.geojson`));
@@ -1327,7 +1326,7 @@ test('a strict build checks the images it ships, and a story built alone keeps t
   assert.ok(fs.existsSync(key), 'the second story still shows it');
   // dist/assets/ holds the images and tiles, so no story takes its name
   edit(root, `${STORY}/story.yaml`, 'id: settlement-of-iceland', 'id: assets');
-  await assert.rejects(make(root), /the story id "assets" names the folder dist\/assets\/ that holds the images and tiles of a --local-assets build/);
+  await assert.rejects(make(root), /the story id "assets" names the folder dist\/assets\/ that holds the images and objects of a --local-assets build/);
 });
 
 test('an inline text without the default language names its file, and --like keeps the rest of the cache', async () => {
@@ -1338,7 +1337,7 @@ test('an inline text without the default language names its file, and --like kee
   secondStory(root);
   redraw(root, 'content/second-story/pages/020-althing/zones/island.geojson');
   zones({ root, log: quiet });
-  const cache = () => Object.keys(JSON.parse(fs.readFileSync(path.join(root, '.cache/harita/zone-compare.json'), 'utf8')).overlap).length;
+  const cache = () => Object.keys(JSON.parse(fs.readFileSync(path.join(root, '.cache/kitap/zone-compare.json'), 'utf8')).overlap).length;
   const before = cache();
   fs.copyFileSync(path.join(root, ISLAND), path.join(root, 'new.geojson'));
   redraw(root, 'new.geojson', 0.004);
@@ -1377,6 +1376,6 @@ test('--share reads every catalogue before it writes, and harita image checks it
   await assert.rejects(image({ root, file, name: 'farm', caption: 'x', source: 'commons.wikimedia.org/wiki/File:Farm.jpg', log: quiet }), /source: Invalid URL/);
   assert.ok(!fs.existsSync(path.join(root, 'content/shared/images')));
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'harita-empty-'));
-  await assert.rejects(image({ root: empty, file, name: 'farm', caption: 'x', log: quiet }), /content\/: no story\.yaml found, run harita image from a content project/);
+  await assert.rejects(image({ root: empty, file, name: 'farm', caption: 'x', log: quiet }), /content\/: no story\.yaml found, run kitap image from a content project/);
   assert.ok(!fs.existsSync(path.join(empty, 'content')));
 });

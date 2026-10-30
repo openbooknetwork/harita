@@ -1,32 +1,18 @@
-// The story page. The build writes this file after common.js into dist/harita.js. The page defines ROUTE, the
-// language and page its URL names, and story.js defines BUNDLE.
-
-// ---------- state ----------
-const B = BUNDLE;
-const ICONS = B.icons;
-const PAGES = B.pages;
-// cur -1 is the overview: the story's title, years and summary, with the map over the whole extent
-let cur = -1;
-const OVERVIEW = { id: null, zones: [], routes: [], markers: [], battle: null, emblem: null, emblemNames: {}, bbox: B.extent, camera: null };
-const here = () => cur < 0 ? OVERVIEW : PAGES[cur];
-let lang = preferredLang(B.languages, B.defaultLanguage);
-let palette = pref('palette', B.themes.map(t => t.id), B.defaultTheme);
-document.documentElement.dataset.palette = palette;
-let layout = pref('layout', LAYOUTS, 'center');
-document.documentElement.dataset.layout = layout;
-const T = () => B.ui[lang];
-const L = field => pick(field, lang, B.defaultLanguage);
-
-// ---------- routing: <lang>/<page>/ and the overview <lang>/ under the story folder ----------
-const pageIndex = id => PAGES.findIndex(p => p.id === id);
-const pageLink = i => i < 0 ? folder(lang) : folder(lang, PAGES[i].id);
-const writeRoute = push => setRoute(cur < 0 ? [lang] : [lang, PAGES[cur].id], push);
-// the page the URL names; the bare story folder has no ROUTE and opens the overview in the reader's language
-if (ROUTE) { lang = ROUTE.lang; if (ROUTE.page) cur = pageIndex(ROUTE.page); }
-const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const colorVar = family => family ? `--z-${family}` : '--accent';
+// The map engine's client: everything inside the stage. kitap's shell mounts it with a host that carries the bundle,
+// the stage's elements, the current page and language, and the shell's helpers. The map's own bundle sits under
+// B.harita and a page's map fields under page.harita; here H and M(page) read them.
+window.KITAP_ENGINE = function (host) {
+const { B, el, L, T, css, colorVar, esc, $, pref, savePref, reduced, canHover, phone } = host;
+const H = B.harita, ICONS = B.icons;
+// the overview shows the whole extent with nothing on it
+const OVERVIEW = { id: null, zones: [], routes: [], markers: [], battle: null, emblem: null, emblemNames: {}, bbox: H.extent, camera: null };
+const M = p => p.id == null ? OVERVIEW : p.harita;
+const here = () => M(host.here());
+const lang = () => host.lang();
+const legend = el.legend, story = el.story;
+const fitPadding = host.padding;
 // a route takes the colour of the family that travels it, else the theme's route colour
-const routeVar = id => B.routes[id].color ? colorVar(B.routes[id].color) : '--route';
+const routeVar = id => H.routes[id].color ? colorVar(H.routes[id].color) : '--route';
 // the routes of one colour on a page are the legs of one march, numbered in the order the page lists them. The last
 // has the full colour, the ones before it a lightness nearer the middle, where a colour keeps the most strength, the
 // earlier the more: shade is that share of LEG_SHADE. A route without arrows marks a front or a border and keeps the
@@ -37,7 +23,7 @@ const legOf = (page, id) => { const g = page.groups?.findIndex(ids => ids.includ
 function routeLegs(page){
   const marches = {}, legs = {};
   for (const id of page.routes) {
-    legs[id] = { shade: 0, n: null }; if (!B.routes[id].arrows) continue;
+    legs[id] = { shade: 0, n: null }; if (!H.routes[id].arrows) continue;
     const m = marches[routeVar(id)] ??= new Map(), leg = legOf(page, id); m.set(leg, [...(m.get(leg) ?? []), id]);
   }
   for (const m of Object.values(marches)) { const steps = [...m.values()]; if (steps.length > 1) steps.forEach((ids, i) => { for (const id of ids) legs[id] = { shade: (steps.length - 1 - i) / (steps.length - 1), n: i + 1 }; }); }
@@ -82,11 +68,10 @@ const patternCss = family => {
   const img = p === 'hatch' ? hatch(45) : p === 'cross' ? `${hatch(45)}, ${hatch(-45)}` : p === 'dots' ? `radial-gradient(${c} 1.2px, transparent 1.5px) 0 0 / 5px 5px` : 'none';
   return `background:${img}, color-mix(in srgb, ${c} 55%, transparent);border-color:${c}`;
 };
-const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const DUR = reduced ? 0 : 1400;
 
 // ---------- shared helpers ----------
-const countries = topojson.feature(B.topo, B.topo.objects.countries);
+const countries = topojson.feature(H.topo, H.topo.objects.countries);
 // the theme's land tints, picked per country by the tint index the build assigned
 // Noto Sans glyphs, SIL Open Font License, fetched by range from the Protomaps assets host when a story labels its countries
 // the label glyphs harita copies to dist/vendor/glyphs/; MapLibre wants an absolute URL, and fills in the braces itself
@@ -94,8 +79,8 @@ const GLYPHS = new URL('../vendor/glyphs/', document.baseURI).href + '{fontstack
 const landFill = () => { const tints = [...Array(8)].map((_, i) => css(`--land-${i}`).trim()); return ['match', ['get', 'tint'], ...tints.flatMap((c, i) => [i, c]), tints[0]]; };
 // zone outlines come from one topology, decoded the first time a page shows the zone; a zone smaller than a pixel
 // on every page that shows it has no outline in it
-const ZONE_SHAPES = Object.fromEntries(B.zoneShapes.objects.zones.geometries.map(g => [g.id, g]));
-const zoneFeature = id => ({ type:'Feature', properties:{ id }, geometry: ZONE_SHAPES[id] ? topojson.feature(B.zoneShapes, ZONE_SHAPES[id]).geometry : null });
+const ZONE_SHAPES = Object.fromEntries(H.zoneShapes.objects.zones.geometries.map(g => [g.id, g]));
+const zoneFeature = id => ({ type:'Feature', properties:{ id }, geometry: ZONE_SHAPES[id] ? topojson.feature(H.zoneShapes, ZONE_SHAPES[id]).geometry : null });
 const HIDDEN = { visibility:'none' };
 const routeFeature = (id, coords) => ({ type:'Feature', properties:{ id }, geometry:{ type:'LineString', coordinates: coords } });
 const sliceRoute = (coords, t) => t <= 0 ? [] : turf.lineSliceAlong(turf.lineString(coords), 0, t * turf.length(turf.lineString(coords))).geometry.coordinates;
@@ -106,14 +91,6 @@ function markerEl(m, battle){
   el.innerHTML = `<span class="wrap">${photo}</span><b>${esc(L(m.label))}</b><small>${esc(L(m.note))}</small>`;
   return el;
 }
-function openImage(id){
-  const im = B.images[id];
-  $('lb-img').src = im.src; $('lb-img').alt = L(im.caption);
-  $('lb-cap').innerHTML = `${esc(L(im.caption))}<small>${esc(L(im.credit))}</small>`;
-  $('lightbox').hidden = false; $('lb-close').focus();
-}
-function closeImage(){ $('lightbox').hidden = true; }
-
 // ---------- battles ----------
 const sideColor = c => !c ? 'var(--rule)' : c.startsWith('#') ? c : `var(--z-${c})`;
 function battleCard(b){
@@ -143,11 +120,11 @@ const cardBeside = () => $('map').getBoundingClientRect().width >= 700;
 function openBattle(id){
   const m = ML.map; if (!m) return;
   closeBattle();
-  const beside = cardBeside(), at = B.battles[id].lnglat;
+  const beside = cardBeside(), at = H.battles[id].lnglat;
   // beside, the card clears the battle's label, which hangs centred under the marker
   const mark = beside && ML.markers['battle:' + id]?.getElement();
   const offset = mark ? Math.max(30, mark.getBoundingClientRect().width / 2 + 12) : 30;
-  const popup = new maplibregl.Popup({ offset, maxWidth: 'none', focusAfterOpen: false, anchor: beside ? 'left' : 'bottom', closeOnClick: false }).setLngLat(at).setDOMContent(battleCard(B.battles[id])).addTo(m);
+  const popup = new maplibregl.Popup({ offset, maxWidth: 'none', focusAfterOpen: false, anchor: beside ? 'left' : 'bottom', closeOnClick: false }).setLngLat(at).setDOMContent(battleCard(H.battles[id])).addTo(m);
   battlePopup = popup;
   // the card's own × closes it; that counts as the reader closing it, so the map slides back
   popup.on('close', () => { if (battlePopup !== popup) return; battlePopup = null; restoreNudge(); });
@@ -186,11 +163,11 @@ function restoreNudge(){
 // ---------- terrain ----------
 // The build cut elevation tiles for the story's extent at low zoom and for each page's area at the zooms it opens
 // at. The map asks only for those; a refused tile makes it draw the parent tile instead.
-const hasTile = (z, x, y) => (B.terrain.ranges[z] ?? []).some(([x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1);
+const hasTile = (z, x, y) => (H.terrain.ranges[z] ?? []).some(([x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1);
 if (window.maplibregl) maplibregl.addProtocol('dem', async (params, abort) => {
   const [z, x, y] = params.url.slice('dem://'.length).split('/').map(Number);
   if (!hasTile(z, x, y)) throw new Error('no elevation tile');
-  const res = await fetch(B.terrain.tiles.replace('{z}', z).replace('{x}', x).replace('{y}', y), { signal: abort.signal });
+  const res = await fetch(H.terrain.tiles.replace('{z}', z).replace('{x}', x).replace('{y}', y), { signal: abort.signal });
   if (!res.ok) throw new Error(`elevation tile ${z}/${x}/${y}: HTTP ${res.status}`);
   return { data: await res.arrayBuffer() };
 });
@@ -208,13 +185,13 @@ function hillPaint(){
 const ML = { map:null, ready:false, markers:{}, legs:{}, anim:{}, shown:{}, camera:0, zoneData:new Set(), zoneHide:{} };
 function mapInit(){
   if (!window.maplibregl) { $('map').innerHTML = `<div class="fail">${esc(T().map_failed_cdn)}</div>`; return; }
-  const [w, s, e, n] = B.extent;
+  const [w, s, e, n] = H.extent;
   let m;
   try {
     m = new maplibregl.Map({
       container:'map', attributionControl:false, canvasContextAttributes:{ antialias:true }, // smooths the emblem's edges, see below
-      style:{ version:8, sources:{}, ...(B.labels ? { glyphs: GLYPHS } : {}), layers:[{ id:'bg', type:'background', paint:{ 'background-color': css('--sea') } }] },
-      bounds:[[w, s], [e, n]], minZoom:3.5, maxZoom:B.maxZoom ?? 11, dragRotate:false, touchPitch:false, keyboard:false // arrow keys step pages, never pan
+      style:{ version:8, sources:{}, ...(H.labels ? { glyphs: GLYPHS } : {}), layers:[{ id:'bg', type:'background', paint:{ 'background-color': css('--sea') } }] },
+      bounds:[[w, s], [e, n]], minZoom:3.5, maxZoom:H.maxZoom ?? 11, dragRotate:false, touchPitch:false, keyboard:false // arrow keys step pages, never pan
     });
     m.touchZoomRotate.disableRotation(); // turning and tilting are for the 3D view, see freeCamera
   } catch (err) { // no WebGL: keep the text and navigation working without the map
@@ -234,15 +211,15 @@ function mapInit(){
   m.on('load', () => {
     m.setPaintProperty('bg', 'background-color', css('--sea')); // the theme may have changed while the map loaded
     m.addSource('countries', { type:'geojson', data: countries });
-    m.addSource('land', { type:'geojson', data: B.land });
+    m.addSource('land', { type:'geojson', data: H.land });
     m.addLayer({ id:'land', type:'fill', source:'countries', paint:{ 'fill-color': landFill() } });
     // one source shades the relief, another lifts the 3D terrain; MapLibre draws both better when they are separate
-    const dem = { type:'raster-dem', tiles:['dem://{z}/{x}/{y}'], tileSize:256, encoding:'terrarium', maxzoom: B.terrain.maxzoom };
+    const dem = { type:'raster-dem', tiles:['dem://{z}/{x}/{y}'], tileSize:256, encoding:'terrarium', maxzoom: H.terrain.maxzoom };
     m.addSource('dem', dem); m.addSource('dem-3d', dem);
     m.addLayer({ id:'hill', type:'hillshade', source:'dem', paint: hillPaint() });
     for (const f in B.families) if (B.families[f].pattern) m.addImage('pat-' + f, patternImage(B.families[f].pattern, css(colorVar(f))));
-    for (const id in B.zones) {
-      const f = B.zones[id].family, c = css(colorVar(f));
+    for (const id in H.zones) {
+      const f = H.zones[id].family, c = css(colorVar(f));
       m.addSource('z-' + id, { type:'geojson', data:{ type:'FeatureCollection', features: [] } });
       m.addLayer({ id:'z-' + id, type:'fill', source:'z-' + id, layout: HIDDEN, paint:{ 'fill-color': c, 'fill-opacity':0, 'fill-opacity-transition':{ duration:600 } } });
       if (B.families[f].pattern) m.addLayer({ id:'zp-' + id, type:'fill', source:'z-' + id, layout: HIDDEN, paint:{ 'fill-pattern': 'pat-' + f, 'fill-opacity':0, 'fill-opacity-transition':{ duration:600 } } });
@@ -250,30 +227,30 @@ function mapInit(){
     }
     m.addLayer({ id:'borders', type:'line', source:'countries', paint:{ 'line-color': css('--border'), 'line-width':0.8, 'line-dasharray':[2, 2] } });
     m.addLayer({ id:'land-outline', type:'line', source:'land', paint:{ 'line-color': css('--ink'), 'line-width':1.2 } });
-    for (const id in B.routes) {
+    for (const id in H.routes) {
       m.addSource('r-' + id, { type:'geojson', data: routeFeature(id, []) });
-      const offset = B.routes[id].offset; // line-offset and the arrows' offset both count to the right of travel
+      const offset = H.routes[id].offset; // line-offset and the arrows' offset both count to the right of travel
       m.addLayer({ id:'rc-' + id, type:'line', source:'r-' + id, layout:{ 'line-cap':'round', 'line-join':'round' }, paint:{ 'line-color': css('--paper'), 'line-width':5, 'line-offset': offset } });
       const paint = { 'line-color': css(routeVar(id)), 'line-width':2.5, 'line-offset': offset };
-      if (B.routes[id].style === 'dashed') paint['line-dasharray'] = [2, 1.5];
+      if (H.routes[id].style === 'dashed') paint['line-dasharray'] = [2, 1.5];
       m.addLayer({ id:'r-' + id, type:'line', source:'r-' + id, layout:{ 'line-cap':'round', 'line-join':'round' }, paint });
-      if (B.routes[id].arrows) m.addLayer({ id:'ra-' + id, type:'symbol', source:'r-' + id,
+      if (H.routes[id].arrows) m.addLayer({ id:'ra-' + id, type:'symbol', source:'r-' + id,
         layout:{ 'symbol-placement':'line', 'symbol-spacing':70, 'icon-image': arrowFor(css(routeVar(id))), 'icon-rotation-alignment':'map', 'icon-allow-overlap':true, 'icon-ignore-placement':true, 'icon-keep-upright':false, 'icon-offset':[0, offset] } });
     }
     m.addSource('emblem', { type:'geojson', data: { type:'FeatureCollection', features: [] } });
     // the GPU smooths the emblem's edges, since MapLibre's edge pass draws covered shapes' edges over the shapes on top
     m.addLayer({ id:'emblem', type:'fill', source:'emblem', paint:{ 'fill-color': emblemFill(), 'fill-opacity': emblemOpacity(null), 'fill-antialias': false } });
     m.addLayer({ id:'emblem-hl', type:'line', source:'emblem', filter: emblemOutline(null), paint:{ 'line-color': css('--ink'), 'line-width': 2 } });
-    if (B.labels) { // atlas lettering: small caps in ink-2 with a land coloured halo, larger countries win a collision
-      m.addSource('labels', { type:'geojson', data: { type:'FeatureCollection', features: B.labels } });
+    if (H.labels) { // atlas lettering: small caps in ink-2 with a land coloured halo, larger countries win a collision
+      m.addSource('labels', { type:'geojson', data: { type:'FeatureCollection', features: H.labels } });
       m.addLayer({ id:'labels', type:'symbol', source:'labels',
-        layout:{ 'text-field': ['get', lang], 'text-font': ['noto-sans'], 'text-size': ['interpolate', ['linear'], ['zoom'], 3.5, 9, 6, 12, 9, 16], 'text-transform': 'uppercase',
+        layout:{ 'text-field': ['get', lang()], 'text-font': ['noto-sans'], 'text-size': ['interpolate', ['linear'], ['zoom'], 3.5, 9, 6, 12, 9, 16], 'text-transform': 'uppercase',
           'text-letter-spacing': 0.18, 'text-max-width': 7, 'text-padding': 12, 'symbol-sort-key': ['get', 'rank'] },
         paint:{ 'text-color': css('--ink-2'), 'text-halo-color': css('--paper-2'), 'text-halo-width': 1.2, 'text-opacity': 0.85 } });
     }
-    for (const id in B.battles) {
-      if (!B.battles[id].front) continue;
-      m.addSource('bf-' + id, { type:'geojson', data: routeFeature(id, B.battles[id].front) });
+    for (const id in H.battles) {
+      if (!H.battles[id].front) continue;
+      m.addSource('bf-' + id, { type:'geojson', data: routeFeature(id, H.battles[id].front) });
       m.addLayer({ id:'bf-' + id, type:'line', source:'bf-' + id, layout:{ 'line-cap':'round', 'line-join':'round' }, paint:{ 'line-color': css('--accent'), 'line-width':3, 'line-dasharray':[1, 2], 'line-opacity':0, 'line-opacity-transition':{ duration:600 } } });
     }
     ML.ready = true; mapApply(here(), true);
@@ -295,14 +272,14 @@ function mapTheme(){
   m.setPaintProperty('bg', 'background-color', css('--sea'));
   m.setPaintProperty('land', 'fill-color', landFill());
   for (const [k, v] of Object.entries(hillPaint())) m.setPaintProperty('hill', k, v);
-  if (B.labels) { m.setPaintProperty('labels', 'text-color', css('--ink-2')); m.setPaintProperty('labels', 'text-halo-color', css('--paper-2')); }
+  if (H.labels) { m.setPaintProperty('labels', 'text-color', css('--ink-2')); m.setPaintProperty('labels', 'text-halo-color', css('--paper-2')); }
   m.setPaintProperty('borders', 'line-color', css('--border'));
   m.setPaintProperty('land-outline', 'line-color', css('--ink'));
-  for (const id in B.zones) { const c = css(colorVar(B.zones[id].family)); m.setPaintProperty('z-' + id, 'fill-color', c); m.setPaintProperty('zl-' + id, 'line-color', c); }
+  for (const id in H.zones) { const c = css(colorVar(H.zones[id].family)); m.setPaintProperty('z-' + id, 'fill-color', c); m.setPaintProperty('zl-' + id, 'line-color', c); }
   for (const f in B.families) if (B.families[f].pattern) m.updateImage('pat-' + f, patternImage(B.families[f].pattern, css(colorVar(f))));
-  for (const id in B.routes) { m.setPaintProperty('rc-' + id, 'line-color', css('--paper')); m.setPaintProperty('r-' + id, 'line-color', css(routeVar(id))); }
+  for (const id in H.routes) { m.setPaintProperty('rc-' + id, 'line-color', css('--paper')); m.setPaintProperty('r-' + id, 'line-color', css(routeVar(id))); }
   routeColors(here());
-  for (const id in B.battles) if (B.battles[id].front) m.setPaintProperty('bf-' + id, 'line-color', css('--accent'));
+  for (const id in H.battles) if (H.battles[id].front) m.setPaintProperty('bf-' + id, 'line-color', css('--accent'));
   m.setPaintProperty('emblem', 'fill-color', emblemFill()); m.setPaintProperty('emblem-hl', 'line-color', css('--ink'));
 }
 // an emblem feature takes its family's colour in the current theme, else its own colour
@@ -360,7 +337,7 @@ function setHighlight(kind, id, point, label = true){
   }
   const lab = $('hl-label');
   lab.hidden = !label; if (!label) return;
-  lab.textContent = L(kind === 'zone' ? B.zones[id].name : kind === 'route' ? B.routes[id].name : page.emblemNames[id]);
+  lab.textContent = L(kind === 'zone' ? H.zones[id].name : kind === 'route' ? H.routes[id].name : page.emblemNames[id]);
   lab.classList.toggle('pinned', !point);
   if (point) { lab.style.left = (point.x + 14) + 'px'; lab.style.top = (point.y + 14) + 'px'; } else { lab.style.left = ''; lab.style.top = ''; }
 }
@@ -388,21 +365,20 @@ function hitAt(pt){
     if (route) return { kind: 'route', id: route.properties.id };
   }
   const zones = zoneLayers.length ? m.queryRenderedFeatures([pt.x, pt.y], { layers: zoneLayers }).map(f => f.properties.id) : [];
-  zones.sort((a, b) => B.zones[a].area - B.zones[b].area);
+  zones.sort((a, b) => H.zones[a].area - H.zones[b].area);
   return zones.length ? { kind: 'zone', id: zones[0] } : null;
 }
-const canHover = matchMedia('(hover: hover)');
 const onOverlay = e => e.originalEvent?.target?.closest?.('.maplibregl-marker, .maplibregl-popup');
 // The map is flat and north up until the reader picks 3D. In 3D a page tilts over the terrain with its own camera,
 // else the story's. The terrain goes once the map has laid flat, so the flight down stays smooth.
 let view = pref('view', ['2d', '3d'], '2d');
 function camera(page, duration){
-  const m = ML.map, c = view === '3d' ? page.camera ?? B.camera : null, token = ++ML.camera;
+  const m = ML.map, c = view === '3d' ? page.camera ?? H.camera : null, token = ++ML.camera;
   if (c) m.setTerrain({ source:'dem-3d', exaggeration: c.exaggeration });
   else if (m.getTerrain()) m.once('moveend', () => { if (ML.camera === token) m.setTerrain(null); });
   const bearing = c ? c.bearing : 0, pitch = c ? c.pitch : 0;
   // a battle's pages may zoom closer than the story: the closer limit of the two pages holds during the flight
-  const top = page.maxZoom ?? B.maxZoom ?? 11;
+  const top = page.maxZoom ?? H.maxZoom ?? 11;
   m.setMaxZoom(Math.max(m.getMaxZoom(), top));
   const cam = m.cameraForBounds([[page.bbox[0], page.bbox[1]], [page.bbox[2], page.bbox[3]]], { padding: fitPadding(), bearing, pitch, maxZoom: top });
   m.flyTo({ center: cam.center, zoom: cam.zoom, bearing, pitch, duration });
@@ -424,7 +400,7 @@ function routeColors(page){
   for (const id of page.routes) {
     const c = legColor(id, legs[id]);
     ML.map.setPaintProperty('r-' + id, 'line-color', c);
-    if (B.routes[id].arrows) ML.map.setLayoutProperty('ra-' + id, 'icon-image', arrowFor(c));
+    if (H.routes[id].arrows) ML.map.setLayoutProperty('ra-' + id, 'icon-image', arrowFor(c));
     ML.legs[id]?.getElement().style.setProperty('--rc', c);
   }
 }
@@ -433,11 +409,11 @@ function routeColors(page){
 const LEG_AT = [0, 0.04, 0.08, 0.12, 0.16, 0.2, 0.25, 0.3];
 function legMarkers(page){
   for (const id in ML.legs) { ML.legs[id].remove(); delete ML.legs[id]; }
-  const legs = routeLegs(page), [w, , e] = page.bbox ?? B.extent, clear = (e - w) / 30;
-  const taken = [...page.markers.map(m => B.markers[m].lnglat), ...(page.battle ? [B.battles[page.battle].lnglat] : [])];
+  const legs = routeLegs(page), [w, , e] = page.bbox ?? H.extent, clear = (e - w) / 30;
+  const taken = [...page.markers.map(m => H.markers[m].lnglat), ...(page.battle ? [H.battles[page.battle].lnglat] : [])];
   const far = p => taken.every(q => Math.hypot((p[0] - q[0]) * Math.cos(p[1] * Math.PI / 180), p[1] - q[1]) > clear);
   for (const id of page.routes) if (legs[id].n) {
-    const line = turf.lineString(B.routes[id].coordinates), len = turf.length(line);
+    const line = turf.lineString(H.routes[id].coordinates), len = turf.length(line);
     const spots = LEG_AT.map(t => turf.along(line, len * t).geometry.coordinates), at = spots.find(far) ?? spots[0];
     const el = document.createElement('div'); el.className = 'legno'; el.textContent = legs[id].n;
     ML.legs[id] = new maplibregl.Marker({ element: el }).setLngLat(at).addTo(ML.map); ML.legs[id].at = LEG_AT[spots.indexOf(at)]; taken.push(at);
@@ -448,12 +424,12 @@ function mapApply(page, first){
   camera(page, first ? 0 : DUR);
   renderView();
   ML.hl = null; $('hl-label').hidden = true;
-  for (const id in B.zones) zoneShow(id, page.zones.includes(id));
-  for (const id in B.routes) routeWidth(id, false);
+  for (const id in H.zones) zoneShow(id, page.zones.includes(id));
+  for (const id in H.routes) routeWidth(id, false);
   const fresh = page.routes.filter(id => !ML.shown[id]), freshLegs = [...new Set(fresh.map(id => legOf(page, id)))];
   legMarkers(page);
-  for (const id in B.routes) {
-    const on = page.routes.includes(id); const src = m.getSource('r-' + id); const coords = B.routes[id].coordinates;
+  for (const id in H.routes) {
+    const on = page.routes.includes(id); const src = m.getSource('r-' + id); const coords = H.routes[id].coordinates;
     cancelAnimationFrame(ML.anim[id]);
     if (!on) { src.setData(routeFeature(id, [])); ML.shown[id] = false; continue; }
     if (ML.shown[id]) { src.setData(routeFeature(id, coords)); ML.legs[id]?.getElement().classList.add('in'); continue; }
@@ -463,7 +439,7 @@ function mapApply(page, first){
     ML.anim[id] = requestAnimationFrame(tick);
   }
   routeColors(page);
-  for (const id in B.battles) if (B.battles[id].front) m.setPaintProperty('bf-' + id, 'line-opacity', page.battle === id ? 0.9 : 0);
+  for (const id in H.battles) if (H.battles[id].front) m.setPaintProperty('bf-' + id, 'line-opacity', page.battle === id ? 0.9 : 0);
   m.getSource('emblem').setData(page.emblem ?? { type:'FeatureCollection', features: [] }); emblemLook(null);
   mapMarkers(page);
   closeBattle();
@@ -477,7 +453,7 @@ function mapMarkers(page, redraw){
   wanted.forEach(id => {
     if (ML.markers[id]) return;
     const isBattle = id.startsWith('battle:');
-    const src = isBattle ? B.battles[id.slice(7)] : B.markers[id];
+    const src = isBattle ? H.battles[id.slice(7)] : H.markers[id];
     const data = isBattle ? { icon: 'swords', color: null, image: null, label: src.name, note: src.date } : src;
     const el = markerEl(data, isBattle);
     if (!isBattle) { const wrap = el.querySelector('.wrap'); wrap.onmouseenter = () => pointMarker(id, true); wrap.onmouseleave = () => pointMarker(id, false); }
@@ -499,221 +475,47 @@ const popMarker = (id, on) => ML.markers[id]?.getElement().classList.toggle('pop
 // pointing at a marker the text names pops it and tints its places in the text
 const pointMarker = (id, on) => { popMarker(id, on); for (const el of story.querySelectorAll(`.place[data-marker="${CSS.escape(id)}"]`)) el.classList.toggle('on', on); };
 
-// ---------- panes ----------
-const navEl = $('nav'), story = $('story'), legend = $('legend');
-// phones show either the map or the text; every step lands on the map, with a dot on Text until it is read
-// the text opens at the top the first time it is shown for a page; going back and forth on the same page keeps the place
-let textPage = -1;
-function setTab(tab){
-  document.body.dataset.tab = tab;
-  $('tab-map').setAttribute('aria-selected', tab === 'map'); $('tab-text').setAttribute('aria-selected', tab === 'text');
-  if (tab === 'text' && textPage !== cur) { textPage = cur; story.scrollTop = 0; requestAnimationFrame(() => { story.scrollTop = 0; }); }
-}
-function renderChrome(){
-  $('tab-map').textContent = T().tab_map; $('tab-text').textContent = T().tab_text;
-  document.documentElement.lang = lang; document.documentElement.dir = T().dir === 'rtl' ? 'rtl' : 'ltr';
-  $('title').textContent = L(B.title);
-  $('back').textContent = L(B.site.title);
-  $('back').href = siteLink(lang);
-  $('hint').textContent = T().hint;
-  if (B.site.source) { $('src').href = B.site.source; $('src').innerHTML = `${ICONS['external-link']} ${esc(T().story_source)}`; $('src').hidden = false; }
-  $('made').innerHTML = credit(T());
-  $('mapdata').innerHTML = `${ICONS.info}<span>${esc(T().map_data)}</span>`; $('mapdata').setAttribute('aria-label', T().map_data);
-  $('othersrc').innerHTML = `${ICONS['external-link']}<span>${esc(T().other_sources)}</span>`; $('othersrc').setAttribute('aria-label', T().other_sources);
-  $('credits').innerHTML = `<p class="made">${credit(T())}</p><h4>${esc(T().map_data)}</h4><ul>${B.terrain.credits.map(c => `<li>${esc(c)}</li>`).join('')}</ul>`;
-  $('view').setAttribute('aria-label', T().map_view);
-  for (const b of $('view').querySelectorAll('button')) b.textContent = T()['view_' + b.dataset.view];
-  $('prev').innerHTML = `${ICONS['chevron-left']} ${esc(T().prev)}`;
-  $('next').innerHTML = `${esc(T().next)} ${ICONS['chevron-right']}`;
-  $('lb-close').textContent = T().close;
-  navEl.setAttribute('aria-label', T().chronology);
-  fillSelect($('lang'), B.languages.map(l => ({ value: l, text: B.ui[l].name ?? l })), lang, T().language);
-  $('lang-icon').innerHTML = ICONS.languages; $('langpick').title = T().language; $('langpick').hidden = B.languages.length < 2;
-  fillSelect($('theme'), B.themes.map(t => ({ value: t.id, text: L(t.name) })), palette, T().theme);
-  $('settings-btn').innerHTML = `${ICONS.settings} ${esc(T().settings)}`;
-  $('settings').setAttribute('aria-label', T().settings);
-  $('layout-label').textContent = T().layout; $('theme-label').textContent = T().theme;
-  $('layouts').setAttribute('aria-label', T().layout);
-  $('layouts').innerHTML = layoutButtons(T(), layout);
-}
-function setLayout(l){
-  layout = l; saveLayout(l);
-  // the map has changed size, so it frames the page again
-  if (ML.map && ML.ready) { ML.map.resize(); camera(here(), reduced ? 0 : 600); }
-}
-const closedGroups = new Set(); // groups the reader folded; navigating to a page opens the groups above it
-const holds = (node, index) => node.type === 'page' ? node.index === index : node.children.some(c => holds(c, index));
-const groupKeys = (nodes, key = '') => nodes.flatMap(n => n.type === 'group' ? [key + '/' + n.id, ...groupKeys(n.children, key + '/' + n.id)] : []);
-const ALL_GROUPS = groupKeys(B.tree);
-const allGroupsOpen = () => ALL_GROUPS.every(k => !closedGroups.has(k));
-function renderNav(reveal = true){
-  navEl.innerHTML = '';
-  const head = document.createElement('div'); head.className = 'sheet-head';
-  head.innerHTML = `<h2>${esc(T().contents)}</h2><button type="button" class="sheet-close">${esc(T().close)}</button>`;
-  head.querySelector('button').onclick = closeSheet;
-  navEl.appendChild(head);
-  if (ALL_GROUPS.length) {
-    const t = document.createElement('button'); t.type = 'button'; t.className = 'toggle-all';
-    t.textContent = toggleLabel(T(), allGroupsOpen());
-    t.onclick = () => { allGroupsOpen() ? ALL_GROUPS.forEach(k => closedGroups.add(k)) : closedGroups.clear(); renderNav(false); };
-    navEl.appendChild(t);
-  }
-  const build = (nodes, depth, key) => {
-    const frag = document.createDocumentFragment();
-    for (const n of nodes) {
-      if (n.type === 'page') {
-        const p = PAGES[n.index]; const a = document.createElement('a');
-        a.className = 'pg'; a.href = pageLink(n.index); a.dataset.page = n.index;
-        a.style.setProperty('--depth', depth); if (n.index === cur) a.setAttribute('aria-current', 'page');
-        a.innerHTML = `<span class="d">${esc(L(p.date))}</span>${esc(L(p.title))}`; frag.appendChild(a);
-      } else {
-        const k = key + '/' + n.id; const d = document.createElement('details');
-        if (reveal && holds(n, cur)) closedGroups.delete(k);
-        d.open = !closedGroups.has(k);
-        d.addEventListener('toggle', () => { if (d.open) closedGroups.delete(k); else closedGroups.add(k); const btn = navEl.querySelector('.toggle-all'); if (btn) btn.textContent = toggleLabel(T(), allGroupsOpen()); });
-        const s = document.createElement('summary'); s.style.setProperty('--depth', depth); s.textContent = L(n.title);
-        d.appendChild(s); d.appendChild(build(n.children, depth + 1, k)); frag.appendChild(d);
-      }
-    }
-    return frag;
-  };
-  navEl.appendChild(build(B.tree, 0, ''));
-}
-// phones: the group path to the current page, and the page itself
-const pathTo = (nodes, index) => { for (const n of nodes) { if (n.type === 'page' && n.index === index) return []; if (n.type === 'group') { const r = pathTo(n.children, index); if (r) return [n, ...r]; } } return null; };
-function renderWhere(p){
-  $('crumbs').textContent = (pathTo(B.tree, cur) ?? []).map(g => L(g.title)).join(' › ');
-  $('here').innerHTML = p === OVERVIEW ? `<small>${esc(L(B.span))}</small>${esc(L(B.title))}` : `<small>${esc(L(p.date))}</small>${esc(L(p.title))}`;
-  $('contents').innerHTML = `${ICONS.list} ${esc(T().contents)}`;
-}
-function openSheet(){ document.body.classList.add('sheet'); requestAnimationFrame(() => { const b = navEl.querySelector('.pg[aria-current="page"]'); if (b) b.scrollIntoView({ block: 'center' }); }); }
-function closeSheet(){ document.body.classList.remove('sheet'); }
-const phone = matchMedia('(max-width:900px)');
-function fitPadding(){
-  const peek = $('peek'), pad = 40;
-  return phone.matches && !peek.hidden ? { top: pad, left: pad, right: pad, bottom: peek.offsetHeight + 24 } : pad;
-}
-function renderPeek(){
-  const first = story.querySelector('p');
-  $('peek-text').textContent = first ? first.textContent : '';
-  $('peek-more').textContent = T().read_more;
-  $('peek-close').setAttribute('aria-label', T().hide);
-  $('peek').hidden = !first;
-  $('legend-btn').textContent = T().legend;
-}
-// map data this page draws beyond the base map, behind an "Other sources" button beside "Map data"
-function renderMapSources(p){
-  const list = p.mapSources?.[lang] ?? [];
-  $('othersrc').hidden = !list.length; $('othercredits').hidden = true; $('othersrc').setAttribute('aria-expanded', false);
-  $('othercredits').innerHTML = list.length ? `<h4>${esc(T().other_sources)}</h4><ul>${list.map(s => `<li>${s.url
-    ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.text)}</a>` : esc(s.text)}</li>`).join('')}</ul>` : '';
-}
-function renderStory(p){
-  renderWhere(p);
-  if (p === OVERVIEW) {
-    story.innerHTML = `<div class="date">${esc(L(B.span))}</div><h2>${esc(L(B.title))}</h2>${B.summary ? `<p>${esc(L(B.summary))}</p>` : ''}`
-      + `<p><a class="start" href="${esc(pageLink(0))}" data-page="0">${esc(T().start)} ${ICONS['chevron-right']}</a></p>`;
-    document.title = L(B.title);
-  } else {
-    const sources = p.sources[lang].length ? `<h3>${esc(T().sources)}</h3><ol>${p.sources[lang].map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '';
-    story.innerHTML = `<div class="date">${esc(L(p.date))}</div><h2>${esc(L(p.title))}</h2>${p.html[lang]}${sources}`;
-    for (const el of story.querySelectorAll('.place')) el.style.setProperty('--c', `var(${colorVar(B.markers[el.dataset.marker]?.color)})`);
-    document.title = `${L(p.title)} - ${L(B.title)}`;
-  }
-  renderMapSources(p);
-  linkPlaces();
-  story.scrollTop = 0;
-  const legs = routeLegs(p);
-  legend.innerHTML = p.zones.map(z => `<button type="button" class="lg" data-hl="zone:${esc(z)}" aria-pressed="false"><i style="${patternCss(B.zones[z].family)}"></i>${esc(L(B.zones[z].name))}</button>`).join('')
-    + p.routes.map(r => `<button type="button" class="lg" data-hl="route:${esc(r)}" aria-pressed="false" style="--rc:${legColor(r, legs[r])}"><i class="r ${B.routes[r].style}${B.routes[r].arrows ? ' arrow' : ''}"></i>${legs[r].n ? `<span class="legno">${legs[r].n}</span>` : ''}${esc(L(B.routes[r].name))}</button>`).join('');
-  legend.hidden = !legend.innerHTML;
-  $('legend-btn').hidden = legend.hidden;
-  renderPeek();
-  $('stepno').textContent = cur < 0 ? '' : `${cur + 1} / ${PAGES.length}`;
-  $('prev').disabled = cur < 0; $('next').disabled = cur === PAGES.length - 1;
-}
-// reveal centres the current page in the chronology; a click in the chronology itself leaves the scroll alone
-function go(i, fromRoute, reveal = true){ cur = i; closeImage(); setTab('map'); document.body.classList.remove('legend-open'); renderNav(); if (reveal) revealCurrent(); renderStory(here()); mapApply(here()); if (!fromRoute) writeRoute(true); }
-function revealCurrent(){
-  const b = navEl.querySelector('.pg[aria-current="page"]'); if (!b) return;
-  const n = navEl.getBoundingClientRect(), r = b.getBoundingClientRect();
-  navEl.scrollTo({ top: navEl.scrollTop + r.top - n.top - (n.height - r.height) / 2, left: navEl.scrollLeft + r.left - n.left - (n.width - r.width) / 2, behavior: reduced ? 'auto' : 'smooth' });
-}
-function setLang(l, fromRoute){
-  lang = l; savePref('lang', l);
-  if (B.labels && ML.map && ML.ready) ML.map.setLayoutProperty('labels', 'text-field', ['get', lang]);
-  renderChrome(); renderNav(); renderStory(here()); mapMarkers(here(), true); if (battlePopup && here().battle) openBattle(here().battle); if (!fromRoute) writeRoute(false);
-}
-function setPalette(id){ palette = id; applyPalette(id); $('theme').value = id; mapTheme(); legendColors(here()); }
+
 // the legend's route lines in the shades of the current theme
 function legendColors(page){ const legs = routeLegs(page); for (const b of legend.querySelectorAll('[data-hl^="route:"]')) b.style.setProperty('--rc', legColor(b.dataset.hl.slice(6), legs[b.dataset.hl.slice(6)])); }
-// the back and forward buttons: the path names a language and a page, or a language alone for the overview
-addEventListener('popstate', () => {
-  const [l, page] = pathParts(), i = page ? pageIndex(page) : -1;
-  if (B.languages.includes(l) && l !== lang) setLang(l, true);
-  if (i !== cur && (i >= 0 || !page)) go(i, true);
-});
-// links to a page step to it in place; a modified click opens the link as the browser does
-document.addEventListener('click', e => {
-  const a = e.target.closest('a[data-page]');
-  if (!a || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-  e.preventDefault(); const inNav = !!a.closest('#nav'); if (inNav) closeSheet(); go(Number(a.dataset.page), false, !inNav);
-});
-$('contents').onclick = openSheet;
-$('tab-map').onclick = () => setTab('map');
-$('tab-text').onclick = () => setTab('text');
-setTab('map');
-// the peek card: tap anywhere on it for the text; × hides it until the next page
-$('peek').onclick = () => setTab('text');
-$('peek').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTab('text'); } };
-$('peek-close').onclick = e => { e.stopPropagation(); $('peek').hidden = true; };
-$('legend-btn').onclick = () => document.body.classList.toggle('legend-open');
-$('view').onclick = e => {
-  const b = e.target.closest('button'); if (!b || b.dataset.view === view) return;
-  view = b.dataset.view; savePref('view', view);
-  clearHighlight(); renderView(); camera(here(), reduced ? 0 : 900);
-};
-// the map data popup and the page's other sources popup share the credit bar, one open at a time
-const CREDIT_POPUPS = { mapdata: 'credits', othersrc: 'othercredits' };
-const showCredits = (open, btn = 'mapdata') => { for (const [b, p] of Object.entries(CREDIT_POPUPS)) { const on = open && b === btn; $(p).hidden = !on; $(b).setAttribute('aria-expanded', on); } };
-$('mapdata').onclick = () => showCredits($('credits').hidden, 'mapdata');
-$('othersrc').onclick = () => showCredits($('othercredits').hidden, 'othersrc');
-document.addEventListener('click', e => { if (!e.target.closest('.credit')) showCredits(false); });
-const showSettings = open => { $('settings').hidden = !open; $('settings-btn').setAttribute('aria-expanded', open); };
-$('settings-btn').onclick = () => showSettings($('settings').hidden);
-document.addEventListener('click', e => { if (!$('settings').hidden && !e.target.closest('.prefs')) showSettings(false); });
-$('layouts').onclick = e => { const b = e.target.closest('button[data-layout]'); if (b) setLayout(b.dataset.layout); };
+// ---------- the legend: the page's zones and routes, with the colour of each ----------
+function renderLegend(p){
+  const legs = routeLegs(p);
+  legend.innerHTML = p.zones.map(z => `<button type="button" class="lg" data-hl="zone:${esc(z)}" aria-pressed="false"><i style="${patternCss(H.zones[z].family)}"></i>${esc(L(H.zones[z].name))}</button>`).join('')
+    + p.routes.map(r => `<button type="button" class="lg" data-hl="route:${esc(r)}" aria-pressed="false" style="--rc:${legColor(r, legs[r])}"><i class="r ${H.routes[r].style}${H.routes[r].arrows ? ' arrow' : ''}"></i>${legs[r].n ? `<span class="legno">${legs[r].n}</span>` : ''}${esc(L(H.routes[r].name))}</button>`).join('');
+  legend.hidden = !legend.innerHTML;
+  el.legendButton.hidden = legend.hidden;
+}
+// the places the text links take the colour of their marker's family
+function colourPlaces(){
+  for (const e of story.querySelectorAll('.place')) e.style.setProperty('--c', `var(${colorVar(H.markers[e.dataset.marker]?.color)})`);
+}
 const legendTarget = e => { const b = e.target.closest?.('.lg'); return b && b.dataset.hl.split(':'); };
 legend.addEventListener('mouseover', e => { const h = legendTarget(e); if (h && canHover.matches) setHighlight(h[0], h[1], null, false); });
 legend.addEventListener('mouseleave', () => { if (canHover.matches) clearHighlight(); });
 legend.addEventListener('focusin', e => { const h = legendTarget(e); if (h) setHighlight(h[0], h[1], null, false); });
 legend.addEventListener('focusout', e => { if (!legend.contains(e.relatedTarget)) clearHighlight(); });
 legend.addEventListener('click', e => { const h = legendTarget(e); if (!h || canHover.matches) return; setHighlight(h[0], h[1], null); document.body.classList.remove('legend-open'); });
-document.addEventListener('click', e => { const t = e.target.closest('[data-img]'); if (t) { e.stopPropagation(); openImage(t.dataset.img); } });
-document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && e.target.matches('[data-img]')) openImage(e.target.dataset.img);
-  if (e.key === 'Escape') { closeImage(); closeBattle(true); closeSheet(); clearHighlight(); showCredits(false); showSettings(false); }
-  if (e.target.closest?.('input,textarea,select')) return;
-  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-    e.preventDefault(); // at either end the key does nothing, rather than scrolling the page or the map
-    const step = (e.key === 'ArrowRight') === (T().dir !== 'rtl') ? 1 : -1; // right to left text reads forward to the left
-    if (cur + step >= -1 && cur + step < PAGES.length) go(cur + step);
-  }
-});
-// pointing at a place or tabbing to it pops its marker
-const placeOf = e => phone.matches ? null : e.target.closest?.('.place');
-story.addEventListener('mouseover', e => { const p = placeOf(e); if (p && canHover.matches) popMarker(p.dataset.marker, true); });
-story.addEventListener('mouseout', e => { const p = placeOf(e); if (p && canHover.matches && !p.contains(e.relatedTarget)) popMarker(p.dataset.marker, false); });
-story.addEventListener('focusin', e => { const p = placeOf(e); if (p?.matches(':focus-visible')) popMarker(p.dataset.marker, true); });
-story.addEventListener('focusout', e => { const p = placeOf(e); if (p) popMarker(p.dataset.marker, false); });
+// the 2D/3D switch in the stage's tool strip
+function renderViewLabels(){
+  el.view.setAttribute('aria-label', T().map_view);
+  for (const b of el.view.querySelectorAll('button')) b.textContent = T()['view_' + b.dataset.view];
+}
+el.view.onclick = e => {
+  const b = e.target.closest('button'); if (!b || b.dataset.view === view) return;
+  view = b.dataset.view; savePref('view', view);
+  clearHighlight(); renderView(); camera(here(), reduced ? 0 : 900);
+};
 phone.addEventListener('change', linkPlaces);
-$('lb-close').onclick = closeImage;
-$('lightbox').addEventListener('click', e => { if (e.target.id === 'lightbox') closeImage(); });
-$('lang').onchange = e => setLang(e.target.value);
-$('theme').onchange = e => setPalette(e.target.value);
-$('prev').onclick = () => go(cur - 1);
-$('next').onclick = () => go(cur + 1);
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', mapTheme);
-new MutationObserver(mapTheme).observe(document.documentElement, { attributes:true, attributeFilter:['data-theme'] });
-
-renderChrome(); renderNav(); renderStory(here()); mapInit(); writeRoute(false);
+renderViewLabels();
+mapInit();
+return {
+  show(page, first) { renderLegend(M(page)); colourPlaces(); mapApply(M(page), first); },
+  lang(l) { renderViewLabels(); if (H.labels && ML.map && ML.ready) ML.map.setLayoutProperty('labels', 'text-field', ['get', l]); renderLegend(here()); colourPlaces(); mapMarkers(here(), true); if (battlePopup && here().battle) openBattle(here().battle); },
+  theme() { mapTheme(); legendColors(here()); },
+  resize() { if (ML.map && ML.ready) { ML.map.resize(); camera(here(), reduced ? 0 : 600); } },
+  escape() { closeBattle(true); clearHighlight(); },
+  point(id, on) { popMarker(id, on); },
+  highlight(kind, id) { setHighlight(kind, id, null); },
+};
+};

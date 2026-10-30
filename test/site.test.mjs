@@ -2,8 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'crypto';
-import { resolve } from '../src/routes.mjs';
-import { site } from '../src/worker.mjs';
+import { resolve, site } from './_kitap.mjs';
 
 const FILES = { 'index.html': 'text/html; charset=utf-8', 'en/index.html': 'text/html; charset=utf-8', 'saga/index.html': 'text/html; charset=utf-8', 'saga/en/index.html': 'text/html; charset=utf-8',
   'saga/en/landnam/index.html': 'text/html; charset=utf-8', 'harita.js': 'text/javascript; charset=utf-8', 'saga/story.js': 'text/javascript; charset=utf-8', '404.html': 'text/html; charset=utf-8',
