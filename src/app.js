@@ -511,7 +511,7 @@ function setTab(tab){
 }
 function renderChrome(){
   $('tab-map').textContent = T().tab_map; $('tab-text').textContent = T().tab_text;
-  document.documentElement.lang = lang; document.documentElement.dir = T().dir;
+  document.documentElement.lang = lang; document.documentElement.dir = T().dir === 'rtl' ? 'rtl' : 'ltr';
   $('title').textContent = L(B.title);
   $('back').textContent = L(B.site.title);
   $('back').href = siteLink(lang);
@@ -696,7 +696,7 @@ document.addEventListener('keydown', e => {
   if (e.target.closest?.('input,textarea,select')) return;
   if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
     e.preventDefault(); // at either end the key does nothing, rather than scrolling the page or the map
-    const step = (e.key === 'ArrowRight') === (T().dir === 'ltr') ? 1 : -1; // right to left text reads forward to the left
+    const step = (e.key === 'ArrowRight') === (T().dir !== 'rtl') ? 1 : -1; // right to left text reads forward to the left
     if (cur + step >= -1 && cur + step < PAGES.length) go(cur + step);
   }
 });
