@@ -1,7 +1,7 @@
 // Helpers for scripts that draw battle plans. A script lays out one battle in a local frame, metres along and across
 // the battle line, and writes the result into the battle's pages.
 //
-//   import { frame, planWriter } from '@openhistoryatlas/harita/plans';
+//   import { frame, planWriter } from '@openbooknetwork/harita/plans';
 //   const writePlan = planWriter('content/punic-wars');   // bound to one story folder, or one battle folder
 //   const f = frame([16.133, 41.297], 330);   // origin [lon, lat]; u runs along bearing 330, w along 330 + 90
 //   f.p(1800, -500)                           // -> [lon, lat] of the point u = 1800 m, w = -500 m

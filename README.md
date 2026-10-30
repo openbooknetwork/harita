@@ -19,25 +19,21 @@ harita:
   markers: [plzen-1419]
 ```
 
-The rest of this README describes the map's content files as before the split.
+Each page sets the map view, the occupation zones, the routes and the markers, and shows a text with images and
+sources beside the map. One build turns a content folder into a static site with a page per step in every language.
 
-
-An interactive map that steps through a timeline. Each page sets the map view, the occupation zones,
-the routes and the markers, and shows a text with images and sources beside the map. One build turns a
-content folder into a static site with a page per step in every language.
-
-Harita is the framework: the npm package
-[@openhistoryatlas/harita](https://www.npmjs.com/package/@openhistoryatlas/harita), with a command line
-and a library API, developed at [github.com/openhistoryatlas/harita](https://github.com/openhistoryatlas/harita).
-Content lives in a separate project folder that depends on it. `example/` in this repository is a one
-story content project that uses every kind of content file.
+Harita is the npm package
+[@openbooknetwork/harita](https://www.npmjs.com/package/@openbooknetwork/harita), with a command line and a library
+API, developed at [github.com/openbooknetwork/harita](https://github.com/openbooknetwork/harita). Content lives in a
+separate project folder that depends on it. `example/` in this repository is a one story content project that uses
+every kind of content file.
 
 ## Set up a content project
 
 ```
 mkdir my-history && cd my-history
 npm init -y
-npm install @openhistoryatlas/harita          # or github:openhistoryatlas/harita, or ../harita from a checkout
+npm install @openbooknetwork/harita          # or github:openbooknetwork/harita, or ../harita from a checkout
 ```
 
 Add to `package.json`:
@@ -228,24 +224,24 @@ the pages bucket alone. CI holds this token, while the assets bucket's token sta
 
 ### The Worker
 
-The package exports the Worker as `@openhistoryatlas/harita/worker`. A content project deploys it from a folder
+The package exports the Worker as `@openbooknetwork/harita/worker`. A content project deploys it from a folder
 of two files:
 
 ```js
 // worker/index.mjs
-import { site } from '@openhistoryatlas/harita/worker';
+import { site } from '@openbooknetwork/harita/worker';
 export default site();
 ```
 
 ```toml
 # worker/wrangler.toml
-name = "openhistoryatlas"
+name = "history"
 main = "index.mjs"
 compatibility_date = "2026-10-01"
-routes = [{ pattern = "openhistoryatlas.org/*", zone_name = "openhistoryatlas.org" }]
+routes = [{ pattern = "openhistorybook.org/*", zone_name = "openhistorybook.org" }]
 [[r2_buckets]]
 binding = "SITE"
-bucket_name = "openhistoryatlas-site"
+bucket_name = "history-site"
 ```
 
 `wrangler deploy -c worker/wrangler.toml` takes `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Every request
@@ -298,7 +294,7 @@ to the working directory, and a `log` function for progress lines, which default
 problem in the content throws an `Error` whose message names the file and the field.
 
 ```js
-import { build, check, dev, i18n, image, findImage, imageIndex, rehash, upload, deploy, resolve, zones, patterns, schema } from '@openhistoryatlas/harita';
+import { build, check, dev, i18n, image, findImage, imageIndex, rehash, upload, deploy, resolve, zones, patterns, schema } from '@openbooknetwork/harita';
 
 const { dist, stories } = await build({ root }); // writes root/dist, one card per story
 await build({ root, only: ['my-story'] });       // that story and the main page, the others as they were
@@ -317,8 +313,8 @@ const alike = patterns({ root, fix: false });   // the family pairs that look al
 schema.check(schema.Page, data, 'page.yaml');   // the zod schema of every content file
 ```
 
-`@openhistoryatlas/harita/schema` exports the schemas on their own, `@openhistoryatlas/harita/plans` the
-helpers for scripts that draw battle plans, and `@openhistoryatlas/harita/worker` the `site()` of
+`@openbooknetwork/harita/schema` exports the schemas on their own, `@openbooknetwork/harita/plans` the
+helpers for scripts that draw battle plans, and `@openbooknetwork/harita/worker` the `site()` of
 [The Worker](#the-worker). Node 22.12 or later.
 
 ## Develop harita
@@ -388,7 +384,7 @@ default_language: en
 stories: [turkiye-1919-1923]        # order on the main page, else alphabetical
 theme: cool                         # cool, mono, navy, parchment, sepia; readers can switch
 url: https://example.org/           # optional: where the site is published
-repository: https://github.com/openhistoryatlas/atlas   # optional: Contribute link on the main page,
+repository: https://github.com/openbooknetwork/history   # optional: Contribute link on the main page,
 branch: main                                            # and a "Source on GitHub" link on every story
 assets:                                                 # the asset store, see Asset store
   url: https://assets.example.org/                      # where readers and builds read objects, ends in /
@@ -887,7 +883,7 @@ A battle with several phase pages is easier to lay out from a script than by han
 local frame, metres along and across the battle line, and writes each phase into its page:
 
 ```js
-import { frame, planWriter } from '@openhistoryatlas/harita/plans';
+import { frame, planWriter } from '@openbooknetwork/harita/plans';
 
 const writePlan = planWriter('content/punic-wars');    // the story folder, or a battle folder
 const f = frame([16.133, 41.297], 330);   // origin [lon, lat]; u runs along bearing 330, w along 330 + 90
@@ -905,7 +901,7 @@ every other key and its comments.
 
 `harita coast <country> <w> <s> <e> <n>` prints the coast the map draws inside a box, as `[lon,lat]` points,
 so a plan's water and walls can follow it. The same list comes from `coast(country, [w, s, e, n])` in
-`@openhistoryatlas/harita/plans`.
+`@openbooknetwork/harita/plans`.
 
 ### Relief and 3D
 
