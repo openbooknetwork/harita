@@ -99,6 +99,12 @@ test('a page dated after the page that follows it fails', async () => {
   await assert.rejects(make(root), /030-kristnitaka starts 1000-01-01, before .*020-althing which starts 1100-01-01/);
 });
 
+test('a story with a battle ships the swords icon, though no marker uses it', async () => {
+  const root = copy();
+  await make(root);
+  assert.match(bundleOf(root).icons.swords, /^<svg/);
+});
+
 test('emblem features are coloured by family and named for the hover label', async () => {
   const root = copy(), plugin = path.join(root, 'plugins/emblems/ring.mjs');
   fs.writeFileSync(plugin, fs.readFileSync(plugin, 'utf8').replace("properties: { color }", "properties: { color, family: 'settled', id: 'ring', name: 'The Althing' }"));

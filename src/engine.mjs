@@ -209,6 +209,7 @@ function readStory(story, ctx) {
     const file = path.join(dir, 'battle.yaml');
     if (!exists(file)) fail(rel(dir), 'battle.yaml is missing');
     const b = ctx.readYaml(file, Battle);
+    ctx.icon('swords', rel(file)); // the card and its map marker draw swords, also where no marker of the story does
     const t = ctx.translatorFor({ defaultLang: b.default_language, dir, where: rel(file) });
     // a story's own battle sees the story's image folders, a shared battle the shared ones alone
     const s = ctx.scope({ kind: 'battle', battle: id, T: t.tr, defaultLang: b.default_language, families: b.families, ns: x => `${id}/${x}`, fam: f => `${id}_${f}`,

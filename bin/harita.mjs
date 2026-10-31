@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// harita build | check | dev | i18n | image | rehash | upload | deploy | zones | patterns | coast, run from a content
-// project folder. The book's commands are kitap's, run with the map engine; zones, patterns and coast are the map's.
+// harita build | check | dev | i18n | image | image-candidates | rehash | upload | deploy | zones | patterns | coast,
+// run from a content project folder. The book's commands are kitap's, run with the map engine; zones, patterns and
+// coast are the map's.
 import { fileURLToPath } from 'url';
 import { run } from '@openbooknetwork/kitap/cli';
 import engine, { patterns, zones, coast } from '../src/index.mjs';

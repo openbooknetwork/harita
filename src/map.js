@@ -9,7 +9,7 @@ const OVERVIEW = { id: null, zones: [], routes: [], markers: [], battle: null, e
 const M = p => p.id == null ? OVERVIEW : p.harita;
 const here = () => M(host.here());
 const lang = () => host.lang();
-const legend = el.legend, story = el.story;
+const legend = el.legend, story = el.story, extra = el.extra;
 const fitPadding = host.padding;
 // a route takes the colour of the family that travels it, else the theme's route colour
 const routeVar = id => H.routes[id].color ? colorVar(H.routes[id].color) : '--route';
@@ -114,6 +114,10 @@ function battleCard(b){
   }
   return el;
 }
+// A phone shows a battle's card at the top of the text, under the page's title, and a tap on the battle scrolls
+// there. A kitap without that box, or a wider screen, shows the card on the map.
+const cardInText = () => phone.matches && !!extra && !!host.showText;
+function renderTextCard(page){ extra?.replaceChildren(...(page.battle ? [battleCard(H.battles[page.battle])] : [])); }
 let battlePopup = null;
 // a map with room for the card beside the battle shows it there, a narrow one above it
 const cardBeside = () => $('map').getBoundingClientRect().width >= 700;
@@ -198,6 +202,11 @@ function mapInit(){
     $('map').innerHTML = `<div class="fail">${esc(T().map_failed_webgl)}</div>`; return;
   }
   ML.map = m;
+  CO.layer = document.createElement('div'); CO.layer.className = 'callouts';
+  CO.layer.innerHTML = '<svg aria-hidden="true"></svg>'; el.map.appendChild(CO.layer); CO.svg = CO.layer.firstChild;
+  // the markers have moved by the time a frame renders, so the lines follow them
+  m.on('render', placeCallouts);
+  m.on('resize', calloutMode);
   // a story wider than the map at zoom 3.5, such as one from Greenland to the Caspian, zooms out until its extent fits
   const fitExtent = () => m.setMinZoom(Math.min(3.5, (m.cameraForBounds([[w, s], [e, n]], { padding: fitPadding() })?.zoom ?? 3.5) - 0.2));
   fitExtent(); m.on('resize', fitExtent);
@@ -380,8 +389,10 @@ function camera(page, duration){
   // a battle's pages may zoom closer than the story: the closer limit of the two pages holds during the flight
   const top = page.maxZoom ?? H.maxZoom ?? 11;
   m.setMaxZoom(Math.max(m.getMaxZoom(), top));
-  const cam = m.cameraForBounds([[page.bbox[0], page.bbox[1]], [page.bbox[2], page.bbox[3]]], { padding: fitPadding(), bearing, pitch, maxZoom: top });
+  const cam = m.cameraForBounds([[page.bbox[0], page.bbox[1]], [page.bbox[2], page.bbox[3]]], { padding: framePadding(page), bearing, pitch, maxZoom: top });
   m.flyTo({ center: cam.center, zoom: cam.zoom, bearing, pitch, duration });
+  // the callouts show once the flight lands, rather than reshuffle on the way
+  if (m.isMoving()) { CO.flying = true; m.once('moveend', () => { if (ML.camera === token) { CO.flying = false; placeCallouts(); } }); }
   if (!m.isMoving()) m.setMaxZoom(top); else m.once('moveend', () => { if (ML.camera === token) m.setMaxZoom(top); });
   freeCamera(!!c);
 }
@@ -443,7 +454,7 @@ function mapApply(page, first){
   m.getSource('emblem').setData(page.emblem ?? { type:'FeatureCollection', features: [] }); emblemLook(null);
   mapMarkers(page);
   closeBattle();
-  if (page.battle) { clearTimeout(ML.battleTimer); ML.battleTimer = setTimeout(() => { if (here() === page) openBattle(page.battle); }, first ? 300 : DUR * 0.8); }
+  if (page.battle && !cardInText()) { clearTimeout(ML.battleTimer); ML.battleTimer = setTimeout(() => { if (here() === page) openBattle(page.battle); }, first ? 300 : DUR * 0.8); }
 }
 function mapMarkers(page, redraw){
   const m = ML.map; if (!m || !ML.ready) return;
@@ -457,11 +468,14 @@ function mapMarkers(page, redraw){
     const data = isBattle ? { icon: 'swords', color: null, image: null, label: src.name, note: src.date } : src;
     const el = markerEl(data, isBattle);
     if (!isBattle) { const wrap = el.querySelector('.wrap'); wrap.onmouseenter = () => pointMarker(id, true); wrap.onmouseleave = () => pointMarker(id, false); }
-    if (isBattle) el.onclick = e => { e.stopPropagation(); openBattle(id.slice(7)); }; // the map would otherwise close the popup on the same click
+    // with callouts a tap on the icon opens its name's note; a photo opens the photo
+    if (!isBattle) el.querySelector('.wrap').onclick = e => { const it = CO.items.find(i => i.id === id); if (it && !e.target.closest('[data-img]')) tapCallout(it); };
+    if (isBattle) el.onclick = e => { e.stopPropagation(); cardInText() ? host.showText(extra) : openBattle(id.slice(7)); }; // the map would otherwise close the popup on the same click
     const mk = new maplibregl.Marker({ element: el, anchor:'top' }).setLngLat(src.lnglat).addTo(m);
     ML.markers[id] = mk; requestAnimationFrame(() => requestAnimationFrame(() => mk.getElement().classList.add('in')));
   });
   linkPlaces();
+  renderCallouts(page);
 }
 // ---------- places: a place the text names and its marker show each other ----------
 // The markers the text names take the pointer, the others let it through to the zones and routes under them. A phone
@@ -476,6 +490,123 @@ const popMarker = (id, on) => ML.markers[id]?.getElement().classList.toggle('pop
 const pointMarker = (id, on) => { popMarker(id, on); for (const el of story.querySelectorAll(`.place[data-marker="${CSS.escape(id)}"]`)) el.classList.toggle('on', on); };
 
 
+// ---------- callouts: on an upright phone the markers' names stand in bands above and below the page's area ----------
+// A phone held upright has a tall map and most pages a wide area, so the camera keeps a band free above and below the
+// area, and each marker's name stands in the nearer band with a line to its icon, as beden's callouts stand beside a
+// body. A tap on a name or an icon shows its note; on a battle's name it shows the battle's card.
+const CO = { layer: null, svg: null, items: [], open: null, flying: false, on: false };
+const SVGNS = 'http://www.w3.org/2000/svg', CO_GAP = 4, CO_EDGE = 8, CO_REACH = 12, CO_LINE = 24;
+const calloutsOn = () => phone.matches && el.map.clientHeight > el.map.clientWidth;
+const labelled = page => [...page.markers.filter(id => L(H.markers[id]?.label)), ...(page.battle ? ['battle:' + page.battle] : [])];
+// the top of the area the names may take: under the map tools
+const toolsBottom = () => el.tools.getBoundingClientRect().bottom - el.map.getBoundingClientRect().top + CO_EDGE;
+// the shell pads its bottom by the height of what covers the map there, such as the peek card, and 24 px
+const coveredBottom = () => { const p = fitPadding(); return typeof p === 'number' ? 0 : p.bottom - 24; };
+// a band holds up to three rows of names, about four names to a band's row and two bands
+function bandHeight(page){
+  const n = labelled(page).length; if (!n) return 0;
+  const row = parseFloat(getComputedStyle(document.documentElement).fontSize) * 1.45 + CO_GAP;
+  return Math.min(3, Math.ceil(n / 4)) * row + CO_LINE;
+}
+// the frame of a page: the shell's padding, and with callouts the bands above and below, kept within 60% of the map
+function framePadding(page){
+  const p = fitPadding(); if (!calloutsOn()) return p;
+  const pad = typeof p === 'number' ? { top: p, right: p, bottom: p, left: p } : { ...p }, top = Math.max(pad.top, toolsBottom());
+  const band = Math.max(0, Math.min(bandHeight(page), (el.map.clientHeight * 0.6 - top - pad.bottom) / 2));
+  return { ...pad, top: top + band, bottom: pad.bottom + band };
+}
+// Places the names in rows along the top and bottom edges. An anchor above mid takes the top band, else the bottom
+// one. In the order of their anchors, each name takes the row that keeps it nearest above or below its anchor,
+// preferring rows at the edge, where neither its line crosses a name nearer the area nor its box a line from nearer the
+// edge; failing that, any row with room. The rows a band has stop short of reach from its nearest icon. A band out of
+// room hands the name nearest the middle to the other band while that one has room, and a name left over hides.
+// anchors are { x, y, r, visible } with r the icon's radius, sizes { w, h }. Returns per anchor { x, y, from, to }
+// (the name's box and its line) or null.
+function bands(anchors, sizes, { width, top, bottom, mid }){
+  const out = anchors.map(() => null), shown = anchors.map((a, i) => ({ ...a, i })).filter(a => a.visible);
+  const lay = (list, isTop) => {
+    if (!list.length) return { placed: [], left: [] };
+    const h = Math.max(...list.map(a => sizes[a.i].h));
+    const limit = isTop ? Math.min(...list.map(a => a.y - a.r)) - CO_REACH : Math.max(...list.map(a => a.y + a.r)) + CO_REACH;
+    const rows = Array.from({ length: Math.max(0, Math.floor(((isTop ? limit - top : bottom - limit) + CO_GAP) / (h + CO_GAP))) }, () => []);
+    const placed = [], left = [], hits = (x, o) => x > o.x - CO_GAP && x < o.x + o.w + CO_GAP;
+    for (const a of [...list].sort((p, q) => p.x - q.x)) {
+      const { w } = sizes[a.i], want = a.x - w / 2; let best = null, fallback = null;
+      rows.forEach((row, r) => {
+        const after = row.length ? row.at(-1).x + row.at(-1).w + 2 * CO_GAP : CO_EDGE, x = Math.max(after, Math.min(Math.max(CO_EDGE, want), width - CO_EDGE - w));
+        if (x + w > width - CO_EDGE) return;
+        const lx = Math.min(Math.max(a.x, x + 6), x + w - 6), score = Math.abs(x - want) + r * h;
+        const clear = rows.every((o, k) => k === r || o.every(n => k > r ? !hits(lx, n) : !(n.lx > x - CO_GAP && n.lx < x + w + CO_GAP)));
+        if (clear && (!best || score < best.score)) best = { r, x, w, lx, score };
+        if (!fallback || score < fallback.score) fallback = { r, x, w, lx, score };
+      });
+      const pick = best ?? fallback; if (!pick) { left.push(a); continue; }
+      rows[pick.r].push({ a, ...pick });
+    }
+    rows.forEach((row, r) => { for (const n of row) placed.push({ a: n.a, x: n.x, lx: n.lx, y: isTop ? top + r * (h + CO_GAP) : bottom - (r + 1) * h - r * CO_GAP, isTop }); });
+    return { placed, left };
+  };
+  const up = shown.filter(a => a.y < mid), down = shown.filter(a => a.y >= mid);
+  let t = lay(up, true), b = lay(down, false);
+  for (let n = 0; n < shown.length && (t.left.length || b.left.length); n++) {
+    const isTop = t.left.length > 0, from = isTop ? up : down, to = isTop ? down : up;
+    const a = from.reduce((p, q) => (isTop ? q.y > p.y : q.y < p.y) ? q : p);
+    if (lay([...to, a], !isTop).left.length > (isTop ? b : t).left.length) break;
+    from.splice(from.indexOf(a), 1); to.push(a); t = lay(up, true); b = lay(down, false);
+  }
+  for (const { a, x, y, lx, isTop } of [...t.placed, ...b.placed]) {
+    const { h } = sizes[a.i];
+    out[a.i] = { x, y, from: [lx, isTop ? y + h : y], to: [a.x, isTop ? a.y - a.r : a.y + a.r] };
+  }
+  return out;
+}
+// the page's names, rebuilt with its markers; on a wider screen the markers carry their own
+function renderCallouts(page){
+  CO.items = []; CO.open = null; CO.svg.replaceChildren(); CO.layer.querySelectorAll('.co').forEach(e => e.remove());
+  CO.on = calloutsOn(); el.map.classList.toggle('callouts-on', CO.on);
+  if (!CO.on) return;
+  for (const id of labelled(page)) {
+    const mk = ML.markers[id]; if (!mk) continue;
+    const battle = id.startsWith('battle:'), src = battle ? H.battles[id.slice(7)] : H.markers[id], note = L(battle ? src.date : src.note);
+    const div = document.createElement('div'); div.className = 'co';
+    div.innerHTML = `<b>${esc(L(battle ? src.name : src.label))}</b>${note ? `<small>${esc(note)}</small>` : ''}`;
+    const line = document.createElementNS(SVGNS, 'line');
+    div.style.setProperty('--c', `var(${colorVar(battle ? null : src.color)})`);
+    CO.layer.appendChild(div); CO.svg.appendChild(line);
+    const it = { id, battle, div, line, icon: mk.getElement().querySelector('.wrap'), note: !!note, size: null };
+    div.onclick = e => { e.stopPropagation(); tapCallout(it); };
+    CO.items.push(it);
+  }
+  measureCallouts(); placeCallouts();
+}
+const measureCallouts = () => { for (const it of CO.items) it.size = { w: it.div.offsetWidth, h: it.div.offsetHeight }; };
+function tapCallout(it){
+  if (it.battle) { if (cardInText()) host.showText(extra); return; }
+  if (!it.note) return;
+  CO.open = CO.open === it ? null : it;
+  for (const i of CO.items) { i.div.classList.toggle('open', CO.open === i); i.line.classList.toggle('on', CO.open === i); }
+  measureCallouts(); placeCallouts();
+}
+function placeCallouts(){
+  if (!CO.items.length) return;
+  const box = el.map.getBoundingClientRect();
+  CO.layer.hidden = CO.flying || !box.width; if (CO.layer.hidden) return;
+  const anchors = CO.items.map(it => {
+    const r = it.icon.getBoundingClientRect(), x = r.left + r.width / 2 - box.left, y = r.top + r.height / 2 - box.top;
+    return { x, y, r: r.height / 2, visible: x >= 0 && x <= box.width && y >= 0 && y <= box.height };
+  });
+  const top = toolsBottom(), bottom = box.height - coveredBottom() - CO_EDGE;
+  bands(anchors, CO.items.map(it => it.size), { width: box.width, top, bottom, mid: (top + bottom) / 2 }).forEach((c, i) => {
+    const it = CO.items[i]; it.div.hidden = !c; it.line.style.display = c ? '' : 'none'; if (!c) return;
+    it.div.style.transform = `translate(${c.x}px, ${c.y}px)`;
+    it.line.setAttribute('x1', c.from[0]); it.line.setAttribute('y1', c.from[1]); it.line.setAttribute('x2', c.to[0]); it.line.setAttribute('y2', c.to[1]);
+  });
+}
+// a phone turned on its side, or a window crossing the phone width, switches between callouts and the markers' own names
+function calloutMode(){
+  if (!ML.map || !ML.ready || calloutsOn() === CO.on) return;
+  renderCallouts(here()); camera(here(), 0);
+}
 // the legend's route lines in the shades of the current theme
 function legendColors(page){ const legs = routeLegs(page); for (const b of legend.querySelectorAll('[data-hl^="route:"]')) b.style.setProperty('--rc', legColor(b.dataset.hl.slice(6), legs[b.dataset.hl.slice(6)])); }
 // ---------- the legend: the page's zones and routes, with the colour of each ----------
@@ -506,15 +637,15 @@ el.view.onclick = e => {
   view = b.dataset.view; savePref('view', view);
   clearHighlight(); renderView(); camera(here(), reduced ? 0 : 900);
 };
-phone.addEventListener('change', linkPlaces);
+phone.addEventListener('change', () => { linkPlaces(); if (cardInText()) closeBattle(); calloutMode(); });
 renderViewLabels();
 mapInit();
 return {
-  show(page, first) { renderLegend(M(page)); colourPlaces(); mapApply(M(page), first); },
-  lang(l) { renderViewLabels(); if (H.labels && ML.map && ML.ready) ML.map.setLayoutProperty('labels', 'text-field', ['get', l]); renderLegend(here()); colourPlaces(); mapMarkers(here(), true); if (battlePopup && here().battle) openBattle(here().battle); },
+  show(page, first) { renderLegend(M(page)); renderTextCard(M(page)); colourPlaces(); mapApply(M(page), first); },
+  lang(l) { renderViewLabels(); renderTextCard(here()); if (H.labels && ML.map && ML.ready) ML.map.setLayoutProperty('labels', 'text-field', ['get', l]); renderLegend(here()); colourPlaces(); mapMarkers(here(), true); if (battlePopup && here().battle) openBattle(here().battle); },
   theme() { mapTheme(); legendColors(here()); },
   resize() { if (ML.map && ML.ready) { ML.map.resize(); camera(here(), reduced ? 0 : 600); } },
-  escape() { closeBattle(true); clearHighlight(); },
+  escape() { closeBattle(true); clearHighlight(); if (CO.open) tapCallout(CO.open); },
   point(id, on) { popMarker(id, on); },
   highlight(kind, id) { setHighlight(kind, id, null); },
 };
