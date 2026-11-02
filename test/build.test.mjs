@@ -261,17 +261,17 @@ test('schema fills defaults and lists every bad field at once', async () => {
 test('a language harita does not ship gets an interface catalogue and counts its gaps', async () => {
   const { i18n } = await import('./_kitap.mjs');
   const root = copy();
-  addLanguage(root, 'de');
-  i18n({ root, lang: 'de', log: quiet });
-  const ui = fs.readFileSync(path.join(root, 'i18n/ui/de.yaml'), 'utf8');
+  addLanguage(root, 'nl');
+  i18n({ root, lang: 'nl', log: quiet });
+  const ui = fs.readFileSync(path.join(root, 'i18n/ui/nl.yaml'), 'utf8');
   assert.match(ui, /# Prev\nprev: ""/);
   assert.match(ui, /themes\.cool: ""/);
   const lines = [];
   await make(root, { log: l => lines.push(l) });
-  assert.ok(lines.some(l => /de interface: 0 of \d+ strings translated/.test(l)));
+  assert.ok(lines.some(l => /nl interface: 0 of \d+ strings translated/.test(l)));
   // with the content translated, the interface is what --strict still stops on
-  fillCatalogue(root, `${STORY}/i18n/de.yaml`); fillCatalogue(root, `${BATTLE}/i18n/de.yaml`);
-  await assert.rejects(make(root, { strict: true }), /de interface: \d+ strings missing/);
+  fillCatalogue(root, `${STORY}/i18n/nl.yaml`); fillCatalogue(root, `${BATTLE}/i18n/nl.yaml`);
+  await assert.rejects(make(root, { strict: true }), /nl interface: \d+ strings missing/);
 });
 
 // zones meeting at one point: after rounding, no uncovered pocket at the junction and none along shared edges
@@ -1038,7 +1038,20 @@ test('routes in a list of their own are one leg, travelled at once', async () =>
   assert.deepEqual(page.groups, [['pillars', 'column']]);
 });
 
-test('a built site loads its scripts, fonts and map glyphs from itself', async () => {
+test('a country label takes its name in each language, and the story catalogue may rename it', async () => {
+  const root = copy();
+  for (const l of ['tr', 'ar', 'zh-TW']) addLanguage(root, l);
+  edit(root, `${STORY}/story.yaml`, 'names: { Iceland: { en: Ísland } }', 'names: {}');
+  fs.mkdirSync(path.join(root, STORY, 'i18n'));
+  fs.writeFileSync(path.join(root, STORY, 'i18n/tr.yaml'), 'labels.Iceland: "İzlanda Cumhuriyeti"\n');
+  const r = await make(root);
+  const { rank, ...names } = bundleOf(root).labels[0].properties;
+  assert.deepEqual(names, { en: 'Iceland', tr: 'İzlanda Cumhuriyeti', ar: 'آيسلندا', 'zh-TW': '冰島' });
+  // a country's name counts as a name, which no language misses
+  assert.equal(r.i18n.stories['settlement-of-iceland'].entries.find(e => e.key === 'labels.Iceland').shared, true);
+});
+
+test('a built site loads its scripts, fonts and map styles from itself', async () => {
   const root = copy();
   await make(root);
   const dist = path.join(root, 'dist');
@@ -1054,7 +1067,7 @@ test('a built site loads its scripts, fonts and map glyphs from itself', async (
   const css = read(root, 'vendor/fonts.css');
   assert.deepEqual([...new Set([...css.matchAll(/font-family: '([^']+)'/g)].map(m => m[1]))], ['Fraunces', 'Public Sans']);
   for (const [, file] of css.matchAll(/url\(([^)]+)\)/g)) assert.ok(fs.existsSync(path.join(dist, 'vendor', file)), file);
-  assert.ok(fs.existsSync(path.join(dist, 'vendor/glyphs/noto-sans/0-255.pbf')));
+  assert.ok(page.includes('<link rel="stylesheet" href="../harita.css">') && fs.existsSync(path.join(dist, 'harita.css')));
 });
 
 test('a story folder named vendor fails, since harita writes dist/vendor/', async () => {

@@ -340,6 +340,17 @@ function finish({ story, pages }, ctx) {
   return { images, warnings, folders };
 }
 
+// A country's name in a language: the short name Unicode CLDR, in Node's ICU, gives the ISO 3166 code Natural Earth's
+// id holds. English keeps Natural Earth's names, which are cut for maps, such as "Bosnia and Herz.".
+const REGION = { Kosovo: 'XK', 'Ashmore and Cartier Is.': null }; // Kosovo has no numeric code, Ashmore carries Australia's
+const regionNames = {};
+function countryName(f, lang) {
+  const n = f.properties.name, region = n in REGION ? REGION[n] : /^\d{3}$/.test(f.id ?? '') ? new Intl.Locale(`und-${f.id}`).region : null;
+  if (!region || new Intl.Locale(lang).language === 'en' || !Intl.DisplayNames.supportedLocalesOf(lang).length) return n;
+  regionNames[lang] ??= new Intl.DisplayNames(lang, { type: 'region', style: 'short', fallback: 'none' });
+  return regionNames[lang].of(region) ?? n;
+}
+
 // --- the map bundle: borders, land, labels, the cleaned zones and the terrain plan ---
 function bundle(content, ctx) {
   const E = content.state, M = E.map, { pages, langs, T } = content, { log, fail, where, cache, hash, readCache, writeCache } = ctx;
@@ -371,7 +382,8 @@ function bundle(content, ctx) {
   }
 
   // --- country labels: one point per country at the pole of inaccessibility of its largest visible piece ---
-  // The text per language is the override from story.yaml, else the Natural Earth name. rank orders collisions, big first.
+  // The text per language is the override from story.yaml, else the story catalogue's labels.<Natural Earth name>, a name
+  // the catalogue may leave out, else the country's name in the language. rank orders collisions, big first.
   let labels = null;
   if (M.labels?.countries) {
     for (const n of [...Object.keys(M.labels.names), ...M.labels.hide]) if (!M.countries.includes(n)) fail(where, `labels name "${n}" is not in countries`);
@@ -379,7 +391,8 @@ function bundle(content, ctx) {
       const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
       const biggest = polys.map(c => turf.polygon(c)).sort((a, b) => turf.area(b) - turf.area(a))[0];
       const [x, y] = polylabel(biggest.geometry.coordinates, 0.01);
-      const text = M.labels.names[f.properties.name] ? T(M.labels.names[f.properties.name], `labels.${f.properties.name}`) : Object.fromEntries(langs.map(l => [l, f.properties.name]));
+      const name = f.properties.name, own = M.labels.names[name] ? null : T(name, `labels.${name}`, { shared: true });
+      const text = own ? Object.fromEntries(langs.map(l => [l, own[l] !== name ? own[l] : countryName(f, l)])) : T(M.labels.names[name], `labels.${name}`);
       return { type: 'Feature', properties: { ...text, rank: -Math.round(km2(f)) }, geometry: { type: 'Point', coordinates: [+x.toFixed(3), +y.toFixed(3)] } };
     });
   }
@@ -477,9 +490,8 @@ export default {
   dir: PKG,
   schemas: { story: StoryMap, page: PageMap },
   ui: new URL('./i18n/', import.meta.url),
-  client: { script: new URL('./map.js', import.meta.url), libraries: [['maplibre-gl', 'dist/maplibre-gl.js'], ['topojson-client', 'dist/topojson-client.min.js'], ['@turf/turf', 'turf.min.js']] },
-  // the label font for the map, in harita's glyphs/ folder: Noto Sans from the Protomaps basemaps assets
-  vendor: out => fs.cpSync(path.join(PKG, 'glyphs', 'noto-sans'), path.join(out, 'glyphs', 'noto-sans'), { recursive: true }),
+  client: { script: new URL('./map.js', import.meta.url), styles: new URL('./map.css', import.meta.url),
+    libraries: [['maplibre-gl', 'dist/maplibre-gl.js'], ['topojson-client', 'dist/topojson-client.min.js'], ['@turf/turf', 'turf.min.js']] },
   read: { story: readStory, folder: (dir, s, ctx) => ctx.state.defineIn(dir, s), include, prepare, page: readPage, finish },
   bundle, objects, make, site,
   describeObjects: keys => `${keys.length} elevation tile${keys.length === 1 ? '' : 's'}`,

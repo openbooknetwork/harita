@@ -1,0 +1,12 @@
+/* The country names, over the map canvas and under the markers: ink-2 on a halo of the land colour, a long name
+   balanced over two lines. The map sets its own font, so the names take the page's. */
+.labels{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.labels div{position:absolute;left:0;top:0;max-width:7em;font-family:var(--body);font-weight:500;line-height:1.15;text-align:center;
+  text-wrap:balance;color:var(--ink-2);opacity:.85;transition:opacity .3s;
+  text-shadow:-1px -1px 0 var(--paper-2),1px -1px 0 var(--paper-2),-1px 1px 0 var(--paper-2),1px 1px 0 var(--paper-2),0 0 3px var(--paper-2)}
+/* letter spacing trails the last letter, and the start padding evens it out */
+.labels .caps{text-transform:uppercase;letter-spacing:.18em;padding-inline-start:.18em}
+/* Arabic, Indic and Thai letters run smaller than capitals and ideographs of the same size */
+.labels div:not(.caps, .ideo){font-size:1.2em}
+.labels .off{opacity:0}
+@media (prefers-reduced-motion:reduce){.labels div{transition:none}}

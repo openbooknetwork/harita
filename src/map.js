@@ -73,9 +73,6 @@ const DUR = reduced ? 0 : 1400;
 // ---------- shared helpers ----------
 const countries = topojson.feature(H.topo, H.topo.objects.countries);
 // the theme's land tints, picked per country by the tint index the build assigned
-// Noto Sans glyphs, SIL Open Font License, fetched by range from the Protomaps assets host when a story labels its countries
-// the label glyphs harita copies to dist/vendor/glyphs/; MapLibre wants an absolute URL, and fills in the braces itself
-const GLYPHS = new URL('../vendor/glyphs/', document.baseURI).href + '{fontstack}/{range}.pbf';
 const landFill = () => { const tints = [...Array(8)].map((_, i) => css(`--land-${i}`).trim()); return ['match', ['get', 'tint'], ...tints.flatMap((c, i) => [i, c]), tints[0]]; };
 // zone outlines come from one topology, decoded the first time a page shows the zone; a zone smaller than a pixel
 // on every page that shows it has no outline in it
@@ -185,6 +182,54 @@ function hillPaint(){
     'hillshade-highlight-color': dark ? rgba(ink, 0.12) : rgba(paper, 0.55), 'hillshade-accent-color': dark ? 'rgba(0,0,0,0.3)' : rgba(ink, 0.2) };
 }
 
+// ---------- country labels ----------
+// HTML over the map, so the browser shapes every script: Arabic joins right to left, Devanagari and Bengali form their
+// conjuncts, Thai stacks its marks. MapLibre's own labels leave Indic scripts out. Larger countries win a collision.
+const LB = { layer:null, items:[], size:0 };
+const LABEL_PAD = 12; // clear pixels around each label
+// the font size: 9 px at zoom 3.5, 12 px at 6, 16 px at 9
+const labelSize = z => z < 6 ? 9 + (Math.max(z, 3.5) - 3.5) * 1.2 : 12 + (Math.min(z, 9) - 6) * 4 / 3;
+function labelsInit(){
+  LB.layer = document.createElement('div'); LB.layer.className = 'labels'; LB.layer.setAttribute('aria-hidden', 'true');
+  ML.map.getCanvas().after(LB.layer); // under the markers, which MapLibre adds after the canvas
+  ML.map.on('render', placeLabels);
+  document.fonts?.addEventListener('loadingdone', measureLabels);
+  renderLabels();
+}
+// a name in a script with capitals takes spaced capitals, the atlas lettering; map.css sizes the other scripts
+const IDEOGRAPHS = /[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}]/u;
+function renderLabels(){
+  const l = lang();
+  LB.items = [...H.labels].sort((a, b) => a.properties.rank - b.properties.rank).map(f => {
+    const d = document.createElement('div'), text = f.properties[l];
+    d.textContent = text; d.dir = 'auto'; d.className = text.toLocaleUpperCase(l) !== text.toLocaleLowerCase(l) ? 'caps' : IDEOGRAPHS.test(text) ? 'ideo' : '';
+    return { d, at: f.geometry.coordinates, w: 0, h: 0 };
+  });
+  LB.layer.replaceChildren(...LB.items.map(it => it.d));
+  measureLabels();
+}
+// each name's box per pixel of font size, so a frame places the names without reading the layout
+function measureLabels(){
+  if (!LB.items.length) return;
+  LB.size = labelSize(ML.map.getZoom()); LB.layer.style.fontSize = LB.size + 'px';
+  const range = document.createRange();
+  for (const it of LB.items) { range.selectNodeContents(it.d); const r = range.getBoundingClientRect(); it.w = r.width / LB.size; it.h = r.height / LB.size; }
+  placeLabels();
+}
+// biggest country first, a name shows when it fits inside the map and clear of the names placed before it
+function placeLabels(){
+  const m = ML.map, size = labelSize(m.getZoom()), { clientWidth: width, clientHeight: height } = m.getContainer(), taken = [];
+  if (size !== LB.size) { LB.size = size; LB.layer.style.fontSize = size + 'px'; }
+  for (const it of LB.items) {
+    const p = m.project(it.at), w = it.w * size / 2, h = it.h * size / 2;
+    const box = [p.x - w - LABEL_PAD, p.y - h - LABEL_PAD, p.x + w + LABEL_PAD, p.y + h + LABEL_PAD];
+    const on = p.x >= w && p.y >= h && p.x + w <= width && p.y + h <= height && !taken.some(t => box[0] < t[2] && t[0] < box[2] && box[1] < t[3] && t[1] < box[3]);
+    if (on) taken.push(box);
+    it.d.classList.toggle('off', !on);
+    it.d.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -50%)`;
+  }
+}
+
 // ---------- map ----------
 const ML = { map:null, ready:false, markers:{}, legs:{}, anim:{}, shown:{}, camera:0, zoneData:new Set(), zoneHide:{} };
 function mapInit(){
@@ -194,7 +239,7 @@ function mapInit(){
   try {
     m = new maplibregl.Map({
       container:'map', attributionControl:false, canvasContextAttributes:{ antialias:true }, // smooths the emblem's edges, see below
-      style:{ version:8, sources:{}, ...(H.labels ? { glyphs: GLYPHS } : {}), layers:[{ id:'bg', type:'background', paint:{ 'background-color': css('--sea') } }] },
+      style:{ version:8, sources:{}, layers:[{ id:'bg', type:'background', paint:{ 'background-color': css('--sea') } }] },
       bounds:[[w, s], [e, n]], minZoom:3.5, maxZoom:H.maxZoom ?? 11, dragRotate:false, touchPitch:false, keyboard:false // arrow keys step pages, never pan
     });
     m.touchZoomRotate.disableRotation(); // turning and tilting are for the 3D view, see freeCamera
@@ -250,13 +295,7 @@ function mapInit(){
     // the GPU smooths the emblem's edges, since MapLibre's edge pass draws covered shapes' edges over the shapes on top
     m.addLayer({ id:'emblem', type:'fill', source:'emblem', paint:{ 'fill-color': emblemFill(), 'fill-opacity': emblemOpacity(null), 'fill-antialias': false } });
     m.addLayer({ id:'emblem-hl', type:'line', source:'emblem', filter: emblemOutline(null), paint:{ 'line-color': css('--ink'), 'line-width': 2 } });
-    if (H.labels) { // atlas lettering: small caps in ink-2 with a land coloured halo, larger countries win a collision
-      m.addSource('labels', { type:'geojson', data: { type:'FeatureCollection', features: H.labels } });
-      m.addLayer({ id:'labels', type:'symbol', source:'labels',
-        layout:{ 'text-field': ['get', lang()], 'text-font': ['noto-sans'], 'text-size': ['interpolate', ['linear'], ['zoom'], 3.5, 9, 6, 12, 9, 16], 'text-transform': 'uppercase',
-          'text-letter-spacing': 0.18, 'text-max-width': 7, 'text-padding': 12, 'symbol-sort-key': ['get', 'rank'] },
-        paint:{ 'text-color': css('--ink-2'), 'text-halo-color': css('--paper-2'), 'text-halo-width': 1.2, 'text-opacity': 0.85 } });
-    }
+    if (H.labels) labelsInit();
     for (const id in H.battles) {
       if (!H.battles[id].front) continue;
       m.addSource('bf-' + id, { type:'geojson', data: routeFeature(id, H.battles[id].front) });
@@ -281,7 +320,6 @@ function mapTheme(){
   m.setPaintProperty('bg', 'background-color', css('--sea'));
   m.setPaintProperty('land', 'fill-color', landFill());
   for (const [k, v] of Object.entries(hillPaint())) m.setPaintProperty('hill', k, v);
-  if (H.labels) { m.setPaintProperty('labels', 'text-color', css('--ink-2')); m.setPaintProperty('labels', 'text-halo-color', css('--paper-2')); }
   m.setPaintProperty('borders', 'line-color', css('--border'));
   m.setPaintProperty('land-outline', 'line-color', css('--ink'));
   for (const id in H.zones) { const c = css(colorVar(H.zones[id].family)); m.setPaintProperty('z-' + id, 'fill-color', c); m.setPaintProperty('zl-' + id, 'line-color', c); }
@@ -642,7 +680,7 @@ renderViewLabels();
 mapInit();
 return {
   show(page, first) { renderLegend(M(page)); renderTextCard(M(page)); colourPlaces(); mapApply(M(page), first); },
-  lang(l) { renderViewLabels(); renderTextCard(here()); if (H.labels && ML.map && ML.ready) ML.map.setLayoutProperty('labels', 'text-field', ['get', l]); renderLegend(here()); colourPlaces(); mapMarkers(here(), true); if (battlePopup && here().battle) openBattle(here().battle); },
+  lang(l) { renderViewLabels(); renderTextCard(here()); if (H.labels && ML.ready) renderLabels(); renderLegend(here()); colourPlaces(); mapMarkers(here(), true); if (battlePopup && here().battle) openBattle(here().battle); },
   theme() { mapTheme(); legendColors(here()); },
   resize() { if (ML.map && ML.ready) { ML.map.resize(); camera(here(), reduced ? 0 : 600); } },
   escape() { closeBattle(true); clearHighlight(); if (CO.open) tapCallout(CO.open); },
