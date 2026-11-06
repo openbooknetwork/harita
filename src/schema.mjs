@@ -21,6 +21,8 @@ export const StoryMap = z.object({
   max_zoom: z.number().min(11).max(16).default(11), // a battle's pages may zoom closer, and the relief tiles follow to zoom 15
   // country names on the map; names overrides the Natural Earth name, hide leaves a country unlabelled
   labels: z.object({ countries: z.boolean().default(false), names: z.record(z.string(), Translatable).default({}), hide: z.array(z.string()).default([]) }).strict().optional(),
+  // a figure the map shows in a box, such as the deaths so far, which each page of the story gives
+  tally: z.object({ label: Translatable, note: Translatable.optional() }).strict().optional(),
 }).strict();
 // story.yaml whole, as harita's own commands read it: the book's fields and the map's
 export const Story = z.object({ ...StoryCore, harita: StoryMap }).strict();
@@ -33,6 +35,11 @@ export function liftStory(data) {
 
 // A tilted 3D view over the terrain: pitch from straight down, bearing clockwise from north, heights times exaggeration.
 export const Camera = z.object({ pitch: z.number().min(10).max(60).default(50), bearing: z.number().min(-180).max(180).default(0), exaggeration: z.number().min(0.5).max(5).default(2) }).strict();
+
+// The story's tally by a page's date: a figure, or a range from low to high.
+const Count = z.number().min(0, 'a figure is 0 or more');
+export const Tally = z.union([Count, z.tuple([Count, Count]).refine(([low, high]) => low <= high, 'a range is [low, high], write the low figure first')],
+  { error: 'write a figure, tally: 12000000, or a range from low to high, tally: [12000000, 20000000]' });
 
 // The map's fields of page.yaml, under harita:
 export const PageMap = z.object({
@@ -47,6 +54,7 @@ export const PageMap = z.object({
   emblem: z.object({ kind: Id }).passthrough().optional(),
   // map data the page draws beyond the base map, credited in an "Other sources" popup on the map
   map_sources: z.array(z.object({ text: Translatable, url: z.string().url().optional() }).strict()).default([]),
+  tally: Tally.optional(),
 }).strict();
 
 // The battle-plan emblem: troops, movements, water and works at one moment of a battle. Sizes are in metres.

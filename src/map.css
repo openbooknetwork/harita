@@ -10,3 +10,27 @@
 .labels div:not(.caps, .ideo){font-size:1.2em}
 .labels .off{opacity:0}
 @media (prefers-reduced-motion:reduce){.labels div{transition:none}}
+/* The tally: its label, the page's figure and a note in a box at the top of the map, in the corner the 2D | 3D switch
+   leaves free. A phone sets it under the map tools, with the note behind an info button. */
+.tally{position:absolute;top:.714rem;inset-inline-start:.714rem;z-index:2;max-width:min(17rem,calc(100% - 1.429rem));padding:.429rem .714rem .5rem;
+  background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.15);line-height:1.3}
+.tally[hidden],.tally .tl-info{display:none}
+.tally .tl-label{display:block;font-size:.786rem;font-weight:600;color:var(--ink-2)}
+.tally .tl-figure{display:block;font-family:var(--display);font-size:1.357rem;font-weight:600;line-height:1.2;white-space:nowrap}
+.tally .tl-note{display:block;margin-top:.286rem;padding-top:.286rem;border-top:1px solid var(--rule);font-size:.714rem;color:var(--ink-2)}
+@media (max-width:900px){
+  .tally{top:calc(.571rem + max(40px,2.857rem) + .429rem);inset-inline-start:.571rem;min-width:min(14rem,calc(100% - 1.143rem));max-width:calc(100% - 1.143rem);
+    display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:.143rem;padding-block:.286rem;padding-inline-end:0}
+  .tally[hidden]{display:none}
+  .tally .tl-label,.tally .tl-figure{grid-column:1}
+  .tally .tl-figure{font-size:1.214rem}
+  .tally .tl-info{display:grid;place-items:center;grid-column:2;grid-row:1/3;width:max(44px,3.143rem);height:max(40px,2.857rem);
+    padding:0;border:0;border-radius:4px;background:none;color:var(--ink-2);cursor:pointer}
+  .tally .tl-info svg{width:1.143rem;height:1.143rem}
+  .tally .tl-info[aria-expanded="true"]{color:var(--ink)}
+  .tally .tl-info:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+  /* the note wraps at the box's width, so the info button stays where the reader tapped it */
+  .tally .tl-note{grid-column:1/-1;width:0;min-width:calc(100% - .714rem)}
+  .tally:not(.open) .tl-note{display:none}
+  body[data-tab="text"] .tally{display:none}
+}

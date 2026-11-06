@@ -15,3 +15,4 @@ casualties: "Thương vong"
 legend: "Chú giải"
 map_failed_cdn: "Không tải được thư viện bản đồ. Hãy kiểm tra kết nối và tải lại trang."
 map_failed_webgl: "Bản đồ cần WebGL, nhưng trình duyệt này không hỗ trợ. Phần văn bản và niên biểu vẫn dùng được."
+tally_note: Về con số này

@@ -15,3 +15,4 @@ casualties: "傷亡"
 legend: "圖例"
 map_failed_cdn: "地圖程式庫未能載入。請檢查網路連線並重新載入頁面。"
 map_failed_webgl: "地圖需要 WebGL，但這個瀏覽器不支援。文字和年表仍可使用。"
+tally_note: 關於此數字

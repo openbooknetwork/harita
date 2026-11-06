@@ -422,6 +422,7 @@ Keys follow the content's ids:
 | `site.yaml` title, intro | `site.title`, `site.intro` (site catalogue) |
 | `story.yaml` title, summary, span | `story.title`, `story.summary`, `story.span` |
 | `story.yaml` labels names, a country's name on the map | `labels.<Natural Earth name>` |
+| `story.yaml` tally label, note | `tally.label`, `tally.note` |
 | `group.yaml` title | `groups.<folder id>.title` |
 | `page.yaml` date, title, sources, map_sources | `pages.<id>.date`, `pages.<id>.title`, `pages.<id>.sources.<n>`, `pages.<id>.map_sources.<n>` |
 | an image or battle folder | the folder's own catalogue, see [Images](#images) and [Battles](#battles) |
@@ -510,6 +511,9 @@ families:
   ottoman: { priority: 1, color: "#b8333a", aliases: [ottomans] }   # battle families that take these colours, see Battles
 smoothing: 4                        # corner rounding passes before the clip
 max_zoom: 14                        # how close a page and a reader can zoom, 11 to 16, 11 by default; relief tiles follow to 15
+tally:                              # a figure shown on the map of every page, optional, see Tally
+  label: Estimated deaths
+  note: Reconstructed from regional death rates (Benedictow 2021)   # optional
 ```
 
 A labelled country shows its name in the reader's language: in English the Natural Earth name, in other languages
@@ -530,6 +534,7 @@ camera: { pitch: 55, bearing: 20 }  # optional, the view in 3D, see Relief and 3
 zones: [british, greek1919]
 routes: []
 markers: [istanbul, izmir]
+tally: [12000000, 20000000]         # the story's tally by this page, see Tally
 sources:
   - "Andrew Mango, Atatürk (1999), ch. 10."
 map_sources:                        # optional, map data the page draws beyond the base map
@@ -948,6 +953,21 @@ samsun:
 
 On a phone held upright the labels stand in bands above and below the page's area, each joined to its marker by a
 thin grey line, and the camera frames the page with room for the bands. A tap on a label or a marker shows its note.
+
+### Tally
+
+A story that follows one figure from page to page, such as the deaths of an epidemic, the size of an army or the
+dead of a war, names it under `tally` in story.yaml. Each page of the story gives the figure by its date, one number
+or a range from low to high:
+
+```yaml
+tally: 12000000
+tally: [12000000, 20000000]
+```
+
+A battle's pages show the figure of the story page before them. The map shows the label and the page's figure in a
+box at its top corner, written for the page's language, such as 12–20 million in English and 12–20 milyon in
+Turkish. The note stands under the figure in smaller type, and on a phone it opens from an info button.
 
 ## Adding a story
 

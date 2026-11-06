@@ -15,3 +15,4 @@ casualties: "Baixas"
 legend: "Legenda do mapa"
 map_failed_cdn: "A biblioteca do mapa não carregou. Verifique a conexão e recarregue a página."
 map_failed_webgl: "O mapa precisa de WebGL, que este navegador não oferece. O texto e a cronologia continuam funcionando."
+tally_note: Sobre este número

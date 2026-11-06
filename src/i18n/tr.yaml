@@ -15,3 +15,4 @@ casualties: Kayıplar
 legend: Lejant
 map_failed_cdn: Harita kitaplığı yüklenemedi. Bağlantıyı denetleyip sayfayı yenileyin.
 map_failed_webgl: Harita için WebGL gerekiyor, bu tarayıcıda yok. Metin ve kronoloji yine çalışır.
+tally_note: Bu sayı hakkında

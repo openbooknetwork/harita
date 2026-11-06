@@ -386,7 +386,7 @@ function setHighlight(kind, id, point, label = true){
   lab.hidden = !label; if (!label) return;
   lab.textContent = L(kind === 'zone' ? H.zones[id].name : kind === 'route' ? H.routes[id].name : page.emblemNames[id]);
   lab.classList.toggle('pinned', !point);
-  if (point) { lab.style.left = (point.x + 14) + 'px'; lab.style.top = (point.y + 14) + 'px'; } else { lab.style.left = ''; lab.style.top = ''; }
+  if (point) { lab.style.left = (point.x + 14) + 'px'; lab.style.top = (point.y + 14) + 'px'; } else { lab.style.left = ''; lab.style.top = ''; clearOfTally(lab); }
 }
 function clearHighlight(){
   if (!ML.hl || !ML.map) return;
@@ -536,8 +536,8 @@ const CO = { layer: null, svg: null, items: [], open: null, flying: false, on: f
 const SVGNS = 'http://www.w3.org/2000/svg', CO_GAP = 4, CO_EDGE = 8, CO_REACH = 12, CO_LINE = 24;
 const calloutsOn = () => phone.matches && el.map.clientHeight > el.map.clientWidth;
 const labelled = page => [...page.markers.filter(id => L(H.markers[id]?.label)), ...(page.battle ? ['battle:' + page.battle] : [])];
-// the top of the area the names may take: under the map tools
-const toolsBottom = () => el.tools.getBoundingClientRect().bottom - el.map.getBoundingClientRect().top + CO_EDGE;
+// the top of the area the names may take: under the map tools, and under the tally where a phone shows it below them
+const toolsBottom = () => Math.max(el.tools.getBoundingClientRect().bottom, TL.box && !TL.box.hidden ? TL.box.getBoundingClientRect().bottom : 0) - el.map.getBoundingClientRect().top + CO_EDGE;
 // the shell pads its bottom by the height of what covers the map there, such as the peek card, and 24 px
 const coveredBottom = () => { const p = fitPadding(); return typeof p === 'number' ? 0 : p.bottom - 24; };
 // a band holds up to three rows of names, about four names to a band's row and two bands
@@ -665,6 +665,39 @@ legend.addEventListener('mouseleave', () => { if (canHover.matches) clearHighlig
 legend.addEventListener('focusin', e => { const h = legendTarget(e); if (h) setHighlight(h[0], h[1], null, false); });
 legend.addEventListener('focusout', e => { if (!legend.contains(e.relatedTarget)) clearHighlight(); });
 legend.addEventListener('click', e => { const h = legendTarget(e); if (!h || canHover.matches) return; setHighlight(h[0], h[1], null); document.body.classList.remove('legend-open'); });
+// ---------- the tally: the story's figure by the page's date, in a box at the top of the map ----------
+// Only the parts that change are written, so a screen reader reads the new figure alone.
+const TL = { box: null };
+function tallyInit(){
+  if (!H.tally) return;
+  const box = TL.box = document.createElement('div'); box.className = 'tally'; box.hidden = true; box.setAttribute('aria-live', 'polite');
+  box.innerHTML = '<span class="tl-label"></span><b class="tl-figure"></b>' + (H.tally.note ? `<button type="button" class="tl-info" aria-expanded="false" aria-controls="tally-note">${ICONS.info}</button><small class="tl-note" id="tally-note"></small>` : '');
+  const info = box.querySelector('.tl-info');
+  if (info) info.onclick = () => info.setAttribute('aria-expanded', box.classList.toggle('open'));
+  el.map.appendChild(box);
+  tallyLang();
+}
+const setText = (node, text) => { if (node && node.textContent !== text) node.textContent = text; };
+function tallyLang(){
+  if (!TL.box) return;
+  setText(TL.box.querySelector('.tl-label'), L(H.tally.label));
+  setText(TL.box.querySelector('.tl-note'), L(H.tally.note));
+  TL.box.querySelector('.tl-info')?.setAttribute('aria-label', T().tally_note);
+  renderTally(here());
+}
+// one figure, or a range from low to high, written for the page's language: "12–20 million"
+function renderTally(page){
+  if (!TL.box) return;
+  const t = page.tally; TL.box.hidden = !t; if (!t) return;
+  const f = new Intl.NumberFormat(lang(), { notation: 'compact', compactDisplay: 'long', maximumSignificantDigits: 2 });
+  setText(TL.box.querySelector('.tl-figure'), t[0] === t[1] ? f.format(t[0]) : f.formatRange(t[0], t[1]));
+}
+// a name pinned at the top of the map that would cover the tally stands below it
+function clearOfTally(lab){
+  if (!TL.box || TL.box.hidden) return;
+  const a = lab.getBoundingClientRect(), b = TL.box.getBoundingClientRect();
+  if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) lab.style.top = (b.bottom - el.map.getBoundingClientRect().top + 6) + 'px';
+}
 // the 2D/3D switch in the stage's tool strip
 function renderViewLabels(){
   el.view.setAttribute('aria-label', T().map_view);
@@ -678,9 +711,10 @@ el.view.onclick = e => {
 phone.addEventListener('change', () => { linkPlaces(); if (cardInText()) closeBattle(); calloutMode(); });
 renderViewLabels();
 mapInit();
+tallyInit();
 return {
-  show(page, first) { renderLegend(M(page)); renderTextCard(M(page)); colourPlaces(); mapApply(M(page), first); },
-  lang(l) { renderViewLabels(); renderTextCard(here()); if (H.labels && ML.ready) renderLabels(); renderLegend(here()); colourPlaces(); mapMarkers(here(), true); if (battlePopup && here().battle) openBattle(here().battle); },
+  show(page, first) { renderLegend(M(page)); renderTextCard(M(page)); colourPlaces(); renderTally(M(page)); mapApply(M(page), first); },
+  lang(l) { renderViewLabels(); renderTextCard(here()); tallyLang(); if (H.labels && ML.ready) renderLabels(); renderLegend(here()); colourPlaces(); mapMarkers(here(), true); if (battlePopup && here().battle) openBattle(here().battle); },
   theme() { mapTheme(); legendColors(here()); },
   resize() { if (ML.map && ML.ready) { ML.map.resize(); camera(here(), reduced ? 0 : 600); } },
   escape() { closeBattle(true); clearHighlight(); if (CO.open) tapCallout(CO.open); },

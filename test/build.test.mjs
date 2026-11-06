@@ -335,6 +335,68 @@ test('a page lists its other map sources with links, in every language', async (
   assert.deepEqual(second.credits.en, []);
 });
 
+// a tally in story.yaml and a figure on each page of the story's own
+function tally(root) {
+  append(root, `${STORY}/story.yaml`, 'tally: { label: Settlers, note: "Counted from the farms in Landnámabók" }');
+  append(root, `${STORY}/pages/010-landnam/page.yaml`, 'tally: 400');
+  append(root, `${STORY}/pages/020-althing/page.yaml`, 'tally: [10000, 20000]');
+  append(root, `${STORY}/pages/030-kristnitaka/page.yaml`, 'tally: [30000, 60000]');
+}
+
+test('a tally is a figure or a range from low to high, and the schema says what to write', () => {
+  const page = tally => schema.check(schema.PageMap, { bbox: [-25, 63, -13, 67], tally }, 'page.yaml');
+  assert.equal(page(12000000).tally, 12000000);
+  assert.deepEqual(page([12000000, 20000000]).tally, [12000000, 20000000]);
+  assert.deepEqual(page([0, 0]).tally, [0, 0]);
+  assert.throws(() => page([20000000, 12000000]), /\n  tally: a range is \[low, high\], write the low figure first/);
+  assert.throws(() => page(-5), /\n  tally: a figure is 0 or more/);
+  assert.throws(() => page([5, -1]), /\n  tally\.1: a figure is 0 or more/);
+  for (const bad of ['many', [1, 2, 3], { low: 1 }]) assert.throws(() => page(bad), /\n  tally: write a figure, tally: 12000000, or a range from low to high, tally: \[12000000, 20000000\]/);
+  const story = t => schema.check(schema.StoryMap, { extent: [-25, 63, -13, 67], land: ['Iceland'], countries: ['Iceland'], families: {}, tally: t }, 'story.yaml');
+  assert.deepEqual(story({ label: 'Settlers' }).tally, { label: 'Settlers' });
+  assert.throws(() => story({ note: 'Counted from the farms' }), /\n  tally\.label: /);
+  assert.throws(() => story({ label: 'Settlers', unit: 'people' }), /\n  tally: Unrecognized key: "unit"/);
+});
+
+test("a story with a tally needs a figure on each of its own pages, a battle page has none, and a page's figure needs the story's tally", () => {
+  const root = copy(), story = 'settlement-of-iceland';
+  append(root, `${STORY}/story.yaml`, 'tally: { label: Settlers }');
+  append(root, `${STORY}/pages/010-landnam/page.yaml`, 'tally: 400');
+  append(root, PLAN, 'tally: 500');
+  const problems = check({ root, story, log: quiet });
+  assert.equal(problems.length, 3, problems.join('\n'));
+  const missing = /page\.yaml: story\.yaml shows "Settlers" on every page, give this page its figure: tally: 12000000, or a range, tally: \[12000000, 20000000\]$/;
+  assert.match(problems[0], /020-althing\//); assert.match(problems[0], missing);
+  assert.match(problems[1], /030-kristnitaka\//); assert.match(problems[1], missing);
+  assert.match(problems[2], /020-fight\/page\.yaml: a battle page has no tally, it shows the figure of the story page before it$/);
+  edit(root, `${STORY}/story.yaml`, 'tally: { label: Settlers }', '');
+  edit(root, PLAN, 'tally: 500', '');
+  assert.deepEqual(check({ root, story, log: quiet }).map(p => p.replace(/^.*pages\//, '')),
+    ['010-landnam/page.yaml: story.yaml has no tally for this figure, add tally: { label: <text> } there or remove tally from the page']);
+});
+
+test("the tally's label and note are story strings, and the map gets each page's figure, a battle page the one before it", async () => {
+  const root = copy();
+  addLanguage(root, 'tr');
+  tally(root);
+  i18n({ root, lang: 'tr', log: quiet });
+  const cat = path.join(root, STORY, 'i18n/tr.yaml'), text = fs.readFileSync(cat, 'utf8');
+  assert.match(text, /# Settlers\ntally\.label: ""/);
+  assert.match(text, /# Counted from the farms in Landnámabók\ntally\.note: ""/);
+  fs.writeFileSync(cat, text.replace('tally.label: ""', 'tally.label: "Yerleşimciler"'));
+  await make(root);
+  const b = bundleOf(root);
+  assert.deepEqual(b.tally, { label: { en: 'Settlers', tr: 'Yerleşimciler' }, note: { en: 'Counted from the farms in Landnámabók', tr: 'Counted from the farms in Landnámabók' } });
+  // a single figure reaches the map as a range of one
+  assert.deepEqual(b.pages.map(p => [p.id, p.tally]), [['landnam', [400, 400]], ['althing', [10000, 20000]], ['kristnitaka', [30000, 60000]],
+    ['althing-1012-assembly', [30000, 60000]], ['althing-1012-fight', [30000, 60000]]]);
+  // a story without a tally ships none
+  const plain = copy();
+  await make(plain);
+  assert.equal(bundleOf(plain).tally, null);
+  assert.ok(bundleOf(plain).pages.every(p => !('tally' in p)));
+});
+
 test('a language written right to left ships dir rtl, English ltr', async () => {
   const root = copy();
   addLanguage(root, 'ar');

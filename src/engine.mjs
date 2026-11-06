@@ -105,6 +105,7 @@ function readStory(story, ctx) {
     aliasOf[a] = f;
   }
   const E = { map: M, zones: {}, routes: {}, markers: {}, battles: {}, definedIn: {}, families: { ...M.families }, aliasOf, zoneFiles: new Set(), zoneUses: [], zoneFolders: {}, battleCtx: {}, includes: [], pages: [] };
+  E.tally = M.tally ? { label: T(M.tally.label, 'tally.label'), note: M.tally.note ? T(M.tally.note, 'tally.note') : null } : null;
   E.storyFamily = f => M.families[f] ? f : aliasOf[f] ?? null;
   const define = (table, id, value, file, kind, dir) => { if (table[id]) fail(file, `${kind} "${id}" is defined twice`); table[id] = value; E.definedIn[`${kind} ${id}`] = dir; };
   const battleLib = dir => ctx.library(dir, isBattle, ID, 'a battle folder is named in lowercase letters, digits and dashes, such as ankara-1402');
@@ -300,10 +301,16 @@ function readPage(mp, { dir, at, own, pid, scope: s }, ctx) {
   } else if (pg.battle === true) need(false, "battle: true opens the card on a battle's own page, a story page names the battle: battle: <id>");
   else if (pg.battle) { attempt(dir, () => E.useBattle(pg.battle, at)); battle = E.battles[pg.battle] ? pg.battle : null; }
   const emblem = pg.emblem ? attempt(dir, () => emblemFor(ctx.root, pg.emblem, `${at} emblem`, { families: s.families, fam: s.fam, T: s.T, pid: own, fail })) : null;
+  // a story with a tally gives the figure on each of its own pages
+  const figure = 'tally: 12000000, or a range, tally: [12000000, 20000000]';
+  if (s.battle) need(pg.tally == null, 'a battle page has no tally, it shows the figure of the story page before it');
+  else if (E.tally) need(pg.tally != null, `story.yaml shows "${E.tally.label[ctx.defaultLang]}" on every page, give this page its figure: ${figure}`);
+  else need(pg.tally == null, 'story.yaml has no tally for this figure, add tally: { label: <text> } there or remove tally from the page');
+  const tally = pg.tally == null ? null : Array.isArray(pg.tally) ? pg.tally : [pg.tally, pg.tally];
   const markers = pg.markers;
   return {
     data: { bbox: pg.bbox, camera: pg.camera ?? null, maxZoom: s.maxZoom, zones: pg.zones, routes: pg.routes.map(s.ns), ...(groups.length ? { groups: groups.map(g => g.map(s.ns)) } : {}), markers: markers.map(s.ns), battle,
-      emblem: emblem?.fc ?? null, emblemNames: emblem?.names ?? {} },
+      emblem: emblem?.fc ?? null, emblemNames: emblem?.names ?? {}, ...(E.tally ? { tally } : {}) },
     credits: pg.map_sources, creditsKey: 'map_sources',
     // a place the text links is a marker the page shows
     links: { has: id => markers.includes(id), attr: id => ` data-marker="${esc(s.ns(id))}"`, missing: (name, id) => `[${name}](@${id}) links to the marker "${id}", add it to the markers of page.yaml or link one the page shows`,
@@ -319,6 +326,8 @@ function finish({ story, pages }, ctx) {
   for (const b of battleList) b.read(); // a battle the story only names: its files are checked, and its catalogues keep every key
   const shownRoutes = new Set(pages.flatMap(pg => pg.harita.routes)), shownMarkers = new Set(pages.flatMap(pg => pg.harita.markers));
   for (const [table, shown] of [[E.routes, shownRoutes], [E.markers, shownMarkers]]) for (const id of Object.keys(table)) if (!shown.has(id)) delete table[id];
+  // a battle's pages show the tally of the story page before them
+  if (E.tally) { let last = null; for (const pg of pages) if (pg.include) pg.harita.tally = last; else last = pg.harita.tally ?? null; }
   const images = [...pages.flatMap(pg => pg.harita.battle ? E.battles[pg.harita.battle]?.images ?? [] : []), ...[...shownMarkers].map(m => E.markers[m]?.image).filter(Boolean)];
   // A family is one state, so a page shows each family in one zone: two states of one family read as one state divided.
   // check reports it, the build warns, and with --strict the build stops. A set of zones is named once, at its first page.
@@ -436,7 +445,7 @@ function bundle(content, ctx) {
   const data = {
     extent: M.extent, maxZoom: M.max_zoom, camera: Camera.parse({}), topo, land: { type: 'Feature', properties: {}, geometry: land.geometry }, terrain, labels,
     zones: Object.fromEntries(Object.values(zones).map(z => [z.id, { family: z.family, name: z.name, area: Math.round(km2(z.feature)) }])),
-    zoneShapes: packZones(shapes, zoneZoom), routes: E.routes, markers: E.markers, battles: E.battles,
+    zoneShapes: packZones(shapes, zoneZoom), routes: E.routes, markers: E.markers, battles: E.battles, tally: E.tally,
   };
   return { data, families: E.families, credits: ctx.objects.own.plan.credits, warnings };
 }

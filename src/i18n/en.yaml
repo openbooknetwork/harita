@@ -15,3 +15,4 @@ casualties: Casualties
 legend: Legend
 map_failed_cdn: The map library did not load. Check the connection and reload the page.
 map_failed_webgl: The map needs WebGL, which this browser does not provide. The text and the chronology still work.
+tally_note: About this figure

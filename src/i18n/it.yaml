@@ -15,3 +15,4 @@ casualties: "Perdite"
 legend: "Legenda"
 map_failed_cdn: "La libreria della mappa non si è caricata. Controlla la connessione e ricarica la pagina."
 map_failed_webgl: "La mappa richiede WebGL, che questo browser non supporta. Il testo e la cronologia funzionano comunque."
+tally_note: Su questa cifra
