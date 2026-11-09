@@ -16,7 +16,9 @@ export const StoryMap = z.object({
   countries: z.array(z.string()).min(1),
   hillshade: z.string().optional(), // read by harita 0.2.4 and earlier; the build asks for its removal
   // aliases: battle family ids that take this family's colours, for a battle that names the side another way
-  families: z.record(Id, z.object({ priority: z.number().int(), color: Hex, color_dark: Hex.optional(), pattern: z.enum(['hatch', 'cross', 'dots']).optional(), aliases: z.array(Id).optional() }).strict()),
+  // opacity: how strongly the family's zones tint the land, 0.38 when left out
+  families: z.record(Id, z.object({ priority: z.number().int(), color: Hex, color_dark: Hex.optional(), pattern: z.enum(['hatch', 'cross', 'dots']).optional(),
+    opacity: z.number().min(0.1, 'opacity runs from 0.1 to 1').max(1, 'opacity runs from 0.1 to 1').optional(), aliases: z.array(Id).optional() }).strict()),
   smoothing: z.number().int().min(0).max(10).default(4),
   max_zoom: z.number().min(11).max(16).default(11), // a battle's pages may zoom closer, and the relief tiles follow to zoom 15
   // country names on the map; names overrides the Natural Earth name, hide leaves a country unlabelled

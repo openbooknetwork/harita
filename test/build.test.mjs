@@ -358,6 +358,13 @@ test('a tally is a figure or a range from low to high, and the schema says what 
   assert.throws(() => story({ label: 'Settlers', unit: 'people' }), /\n  tally: Unrecognized key: "unit"/);
 });
 
+test("a family's opacity runs from 0.1 to 1 and is left out by default", () => {
+  const story = f => schema.check(schema.StoryMap, { extent: [-25, 63, -13, 67], land: ['Iceland'], countries: ['Iceland'], families: { settled: f } }, 'story.yaml');
+  assert.equal(story({ priority: 0, color: '#111111', opacity: 0.7 }).families.settled.opacity, 0.7);
+  assert.equal(story({ priority: 0, color: '#111111' }).families.settled.opacity, undefined);
+  for (const bad of [0, 1.5]) assert.throws(() => story({ priority: 0, color: '#111111', opacity: bad }), /\n  families\.settled\.opacity: opacity runs from 0\.1 to 1/);
+});
+
 test("a story with a tally needs a figure on each of its own pages, a battle page has none, and a page's figure needs the story's tally", () => {
   const root = copy(), story = 'settlement-of-iceland';
   append(root, `${STORY}/story.yaml`, 'tally: { label: Settlers }');

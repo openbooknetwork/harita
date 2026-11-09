@@ -508,6 +508,7 @@ families:
   british: { priority: 0, color: "#a06b1f", color_dark: "#d19b4a" }
   greek:   { priority: 3, color: "#2f6a9f", color_dark: "#6fa3d6" }
   held:    { priority: 0, color: "#c62828", pattern: cross }   # hatch, cross or dots over the tint
+  reached: { priority: 0, color: "#111111", opacity: 0.7 }     # how strongly the zones tint the land, 0.1 to 1, 0.38 by default
   ottoman: { priority: 1, color: "#b8333a", aliases: [ottomans] }   # battle families that take these colours, see Battles
 smoothing: 4                        # corner rounding passes before the clip
 max_zoom: 14                        # how close a page and a reader can zoom, 11 to 16, 11 by default; relief tiles follow to 15
@@ -951,6 +952,11 @@ samsun:
   note: Mustafa Kemal lands, 19 May 1919
 ```
 
+A marker's label and note hang under its icon. On a wider screen, a label that would cover another marker, another
+label or a box over the map stands aside, at the nearest clear spot around its icon that lies closer to that icon
+than to any other, and a thin grey line joins the two. Labels claim their spots in the order of the page's `markers`.
+A label with no room for its note shows alone.
+
 On a phone held upright the labels stand in bands above and below the page's area, each joined to its marker by a
 thin grey line, and the camera frames the page with room for the bands. A tap on a label or a marker shows its note.
 
@@ -967,7 +973,7 @@ tally: [12000000, 20000000]
 
 A battle's pages show the figure of the story page before them. The map shows the label and the page's figure in a
 box at its top corner, written for the page's language, such as 12–20 million in English and 12–20 milyon in
-Turkish. The note stands under the figure in smaller type, and on a phone it opens from an info button.
+Turkish, on every page whose figure is above 0. The note stands under the figure in smaller type, and on a phone it opens from an info button.
 
 ## Adding a story
 

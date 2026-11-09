@@ -10,6 +10,11 @@
 .labels div:not(.caps, .ideo){font-size:1.2em}
 .labels .off{opacity:0}
 @media (prefers-reduced-motion:reduce){.labels div{transition:none}}
+/* The leaders: a thin line from a marker's icon to its name where the name stands aside, under the markers */
+.leaders{position:absolute;inset:0;width:100%;height:100%;overflow:hidden;pointer-events:none}
+.leaders line{stroke:var(--ink-2);stroke-width:1;opacity:.8}
+/* a name with no room for its note shows alone; the note keeps its place, so the name does not move */
+.mk.ld-short > small{visibility:hidden}
 /* The tally: its label, the page's figure and a note in a box at the top of the map, in the corner the 2D | 3D switch
    leaves free. A phone sets it under the map tools, with the note behind an info button. */
 .tally{position:absolute;top:.714rem;inset-inline-start:.714rem;z-index:2;max-width:min(17rem,calc(100% - 1.429rem));padding:.429rem .714rem .5rem;

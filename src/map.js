@@ -66,7 +66,7 @@ function patternImage(kind, color){
 const patternCss = family => {
   const c = `var(${colorVar(family)})`, p = B.families[family]?.pattern, hatch = a => `repeating-linear-gradient(${a}deg, ${c} 0 1.5px, transparent 1.5px 5px)`;
   const img = p === 'hatch' ? hatch(45) : p === 'cross' ? `${hatch(45)}, ${hatch(-45)}` : p === 'dots' ? `radial-gradient(${c} 1.2px, transparent 1.5px) 0 0 / 5px 5px` : 'none';
-  return `background:${img}, color-mix(in srgb, ${c} 55%, transparent);border-color:${c}`;
+  return `background:${img}, color-mix(in srgb, ${c} ${Math.min(100, Math.round(55 * fillScale(family)))}%, transparent);border-color:${c}`;
 };
 const DUR = reduced ? 0 : 1400;
 
@@ -296,6 +296,7 @@ function mapInit(){
     m.addLayer({ id:'emblem', type:'fill', source:'emblem', paint:{ 'fill-color': emblemFill(), 'fill-opacity': emblemOpacity(null), 'fill-antialias': false } });
     m.addLayer({ id:'emblem-hl', type:'line', source:'emblem', filter: emblemOutline(null), paint:{ 'line-color': css('--ink'), 'line-width': 2 } });
     if (H.labels) labelsInit();
+    leadersInit();
     for (const id in H.battles) {
       if (!H.battles[id].front) continue;
       m.addSource('bf-' + id, { type:'geojson', data: routeFeature(id, H.battles[id].front) });
@@ -348,8 +349,10 @@ function emblemLook(id){
 }
 // zone looks: off the page, on it, highlighted, or faded behind a highlighted neighbour
 const ZONE_LOOK = { off: [0, 0, 0, 1], base: [0.38, 0.7, 0.9, 1], on: [0.62, 0.95, 1, 2.5], dim: [0.16, 0.3, 0.4, 1] };
+// a family's opacity scales its fill in every look, against the base fill of 0.38
+const fillScale = family => (B.families[family]?.opacity ?? ZONE_LOOK.base[0]) / ZONE_LOOK.base[0];
 function zonePaint(id, look, ms){
-  const m = ML.map, [fill, pattern, line, width] = ZONE_LOOK[look];
+  const m = ML.map, [base, pattern, line, width] = ZONE_LOOK[look], fill = Math.min(1, base * fillScale(H.zones[id].family));
   m.setPaintProperty('z-' + id, 'fill-opacity-transition', { duration: ms }); m.setPaintProperty('z-' + id, 'fill-opacity', fill);
   if (m.getLayer('zp-' + id)) { m.setPaintProperty('zp-' + id, 'fill-opacity-transition', { duration: ms }); m.setPaintProperty('zp-' + id, 'fill-opacity', pattern); }
   m.setPaintProperty('zl-' + id, 'line-opacity-transition', { duration: ms }); m.setPaintProperty('zl-' + id, 'line-opacity', line);
@@ -514,6 +517,7 @@ function mapMarkers(page, redraw){
   });
   linkPlaces();
   renderCallouts(page);
+  renderLeaders(page);
 }
 // ---------- places: a place the text names and its marker show each other ----------
 // The markers the text names take the pointer, the others let it through to the zones and routes under them. A phone
@@ -645,6 +649,84 @@ function calloutMode(){
   if (!ML.map || !ML.ready || calloutsOn() === CO.on) return;
   renderCallouts(here()); camera(here(), 0);
 }
+
+// ---------- leaders: on a wider screen a name that would cover another stands aside, with a line to its icon ----------
+// In page order each name keeps its place under its icon when that covers no icon, no name placed before it and none
+// of the boxes over the map. Else it takes the nearest clear spot around its icon that lies nearer its own icon than
+// any other, so the name reads as that icon's, and a thin line joins the two.
+const LD = { svg: null, items: [] };
+const LD_GAP = 6, LD_PAD = 3, LD_STEP = 18, LD_STEPS = 8;
+const LD_ANGLES = [90, 270, 0, 180, 45, 135, 315, 225].map(a => a * Math.PI / 180); // below, above, right, left, then the diagonals
+function leadersInit(){
+  LD.svg = document.createElementNS(SVGNS, 'svg'); LD.svg.setAttribute('class', 'leaders'); LD.svg.setAttribute('aria-hidden', 'true');
+  ML.map.getCanvas().after(LD.svg); // under the markers, so a line ends under the name's box
+  ML.map.on('render', placeLeaders);
+  ML.map.on('moveend', () => requestAnimationFrame(() => placeLeaders())); // once the map stops, the names settle in their nearest spots
+  document.fonts?.addEventListener('loadingdone', () => placeLeaders()); // a loaded font changes the names' widths
+}
+function renderLeaders(page){
+  if (!LD.svg) return;
+  LD.svg.replaceChildren();
+  LD.items = [...page.markers, ...(page.battle ? ['battle:' + page.battle] : [])].map(id => ML.markers[id]?.getElement()).filter(Boolean).map(mk => {
+    const line = document.createElementNS(SVGNS, 'line'); LD.svg.appendChild(line);
+    const note = mk.querySelector(':scope > small');
+    return { mk, icon: mk.querySelector('.wrap'), name: mk.querySelector(':scope > b'), note: note?.textContent ? note : null, line, dx: 0, dy: 0 };
+  });
+  placeLeaders();
+}
+const overlaps = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+const grow = (r, p) => ({ l: r.l - p, t: r.t - p, r: r.r + p, b: r.b + p });
+const moveBox = (r, dx, dy) => ({ l: r.l + dx, t: r.t + dy, r: r.r + dx, b: r.b + dy });
+function shiftName(it, dx, dy){
+  if (it.dx === dx && it.dy === dy) return;
+  it.dx = dx; it.dy = dy; const t = dx || dy ? `translate(${dx}px, ${dy}px)` : '';
+  it.name.style.transform = t; if (it.note) it.note.style.transform = t;
+}
+function placeLeaders(){
+  if (!LD.svg) return;
+  LD.svg.style.display = CO.on ? 'none' : '';
+  if (CO.on) { for (const it of LD.items) { shiftName(it, 0, 0); it.mk.classList.remove('ld-short'); } return; } // the callouts carry the names on an upright phone
+  const box = ML.map.getContainer().getBoundingClientRect(), W = box.width, Ht = box.height;
+  const rel = r => ({ l: r.left - box.left, t: r.top - box.top, r: r.right - box.left, b: r.bottom - box.top });
+  const icons = LD.items.map(it => rel(it.icon.getBoundingClientRect()));
+  // the boxes over the map: its tools, the tally and the legend
+  const panels = [el.tools, TL.box, legend].filter(p => p && !p.hidden && p.offsetParent).map(p => rel(p.getBoundingClientRect())).filter(r => overlaps(r, { l: 0, t: 0, r: W, b: Ht }));
+  const taken = [...panels];
+  LD.items.forEach((it, i) => {
+    const ic = icons[i], cx = (ic.l + ic.r) / 2, cy = (ic.t + ic.b) / 2, ir = (ic.b - ic.t) / 2;
+    if (ic.r < 0 || ic.l > W || ic.b < 0 || ic.t > Ht) { shiftName(it, 0, 0); it.line.style.display = 'none'; return; }
+    // the name's box where it hangs under the icon, read without the shift it has now
+    const a = moveBox(rel(it.name.getBoundingClientRect()), -it.dx, -it.dy), n = it.note ? moveBox(rel(it.note.getBoundingClientRect()), -it.dx, -it.dy) : a;
+    const reach = (r, o) => Math.hypot(Math.max(o.l - r.r, r.l - o.r, 0), Math.max(o.t - r.b, r.t - o.b, 0));
+    const clear = (r, aside) => r.l >= 0 && r.t >= 0 && r.r <= W && r.b <= Ht && !taken.some(t => overlaps(r, t))
+      && !icons.some((o, k) => k !== i && (overlaps(r, grow(o, LD_PAD)) || aside && reach(r, o) < reach(r, ic)));
+    const spot = home => {
+      if (clear(home, false)) return [0, 0];
+      // while the map moves a name keeps the spot it has while that stays clear, so it does not hop about
+      if (ML.map.isMoving() && clear(moveBox(home, it.dx, it.dy), true)) return [it.dx, it.dy];
+      const w = home.r - home.l, h = home.b - home.t;
+      for (let s = 0; s <= LD_STEPS; s++) for (const ang of LD_ANGLES) {
+        const x = cx + Math.cos(ang) * (ir + LD_GAP + w / 2 + s * LD_STEP), y = cy + Math.sin(ang) * (ir + LD_GAP + h / 2 + s * LD_STEP);
+        const dx = Math.round(x - w / 2 - home.l), dy = Math.round(y - h / 2 - home.t);
+        if (clear(moveBox(home, dx, dy), true)) return [dx, dy];
+      }
+      return null;
+    };
+    // a name and its note that find no clear spot try the name alone, and the note hides; failing that the name stays
+    let home = { l: Math.min(a.l, n.l), t: Math.min(a.t, n.t), r: Math.max(a.r, n.r), b: Math.max(a.b, n.b) }, pick = spot(home), short = false;
+    if (!pick && it.note) { short = true; home = a; pick = spot(a); }
+    pick ??= [0, 0];
+    it.mk.classList.toggle('ld-short', short);
+    shiftName(it, pick[0], pick[1]);
+    const at = moveBox(home, pick[0], pick[1]); taken.push(grow(at, LD_PAD));
+    const moved = Math.hypot(pick[0], pick[1]) > 2;
+    it.line.style.display = moved ? '' : 'none'; if (!moved) return;
+    // from the icon's rim to the nearest point of the name's box
+    const px = Math.min(Math.max(cx, at.l), at.r), py = Math.min(Math.max(cy, at.t), at.b), d = Math.hypot(px - cx, py - cy) || 1;
+    it.line.setAttribute('x1', cx + (px - cx) / d * ir); it.line.setAttribute('y1', cy + (py - cy) / d * ir);
+    it.line.setAttribute('x2', px); it.line.setAttribute('y2', py);
+  });
+}
 // the legend's route lines in the shades of the current theme
 function legendColors(page){ const legs = routeLegs(page); for (const b of legend.querySelectorAll('[data-hl^="route:"]')) b.style.setProperty('--rc', legColor(b.dataset.hl.slice(6), legs[b.dataset.hl.slice(6)])); }
 // ---------- the legend: the page's zones and routes, with the colour of each ----------
@@ -685,10 +767,10 @@ function tallyLang(){
   TL.box.querySelector('.tl-info')?.setAttribute('aria-label', T().tally_note);
   renderTally(here());
 }
-// one figure, or a range from low to high, written for the page's language: "12–20 million"
+// one figure, or a range from low to high, written for the page's language: "12–20 million". A page at 0 has no box.
 function renderTally(page){
   if (!TL.box) return;
-  const t = page.tally; TL.box.hidden = !t; if (!t) return;
+  const t = page.tally, on = !!t && t[1] > 0; TL.box.hidden = !on; if (!on) return;
   const f = new Intl.NumberFormat(lang(), { notation: 'compact', compactDisplay: 'long', maximumSignificantDigits: 2 });
   setText(TL.box.querySelector('.tl-figure'), t[0] === t[1] ? f.format(t[0]) : f.formatRange(t[0], t[1]));
 }
