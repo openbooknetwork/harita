@@ -73,7 +73,7 @@ export const BattlePlan = z.object({
     z.object({ path: z.array(LngLat).min(2), width: Size.optional(), ...Piece }).strict(),
     z.object({ area: z.array(LngLat).min(3), ...Piece }).strict(),
   ])).default([]),
-  works: z.array(z.object({ side: PlanSide.optional(), path: z.array(LngLat).min(2), width: Size.optional(), style: z.enum(['wall', 'trench']).optional(), ...Piece }).strict()).default([]),
+  works: z.array(z.object({ side: PlanSide.optional(), path: z.array(LngLat).min(2), width: Size.optional(), style: z.enum(['wall', 'trench', 'chain']).optional(), ...Piece }).strict()).default([]),
   units: z.array(z.object({
     side: PlanSide, type: z.enum(UNIT_TYPES).default('infantry'), at: LngLat, width: Size, depth: Size.optional(),
     facing: z.number().optional(), bow: z.number().optional(), count: z.number().int().positive().optional(), rows: z.number().int().positive().optional(),

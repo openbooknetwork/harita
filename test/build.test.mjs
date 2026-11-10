@@ -732,6 +732,20 @@ test('a trench zigzags across its line, a wall keeps to it', async () => {
   assert.ok(stray('trench') > 60, `trench ${stray('trench')}`);
 });
 
+test('a chain draws open and flat links by turns along its line, within its width', async () => {
+  const { default: battlePlan } = await import('../src/emblems/battle-plan.mjs');
+  // 790 m due east, links 40 m wide and 96 m long, a centre every 60 m or so
+  const feats = battlePlan({ works: [{ path: [[10, 45], [10.01, 45]], width: 40, style: 'chain', name: 'The boom' }] }).features;
+  const hit = feats.filter(f => f.properties.hit), links = feats.filter(f => !f.properties.hit);
+  assert.equal(hit.length, 1);
+  assert.equal(links.length, 13);
+  assert.deepEqual(links.map(f => f.geometry.coordinates.length), links.map((_, i) => i % 2 ? 1 : 2));
+  for (const f of links) for (const ring of f.geometry.coordinates) {
+    assert.deepEqual(ring[0], ring.at(-1));
+    assert.ok(ring.every(([, lat]) => Math.abs(lat - 45) * 110540 <= 21), 'a link strays off its line');
+  }
+});
+
 test('check reports every problem in a story, and page ids limit it to those pages', () => {
   const root = copy(), story = 'settlement-of-iceland';
   edit(root, `${STORY}/pages/020-althing/page.yaml`, 'markers: [reykjavik, thingvellir]', 'markers: [reykjavik, hof]');

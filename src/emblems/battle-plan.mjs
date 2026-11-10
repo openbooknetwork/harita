@@ -21,7 +21,8 @@
 // boards outwards, `depth` defaults to 0.6 of `width`, `gaps` leaves wagons out at compass bearings from its centre,
 // for a gate, an opening or a breach: `gaps: [0, { bearing: 135, wagons: 3 }]`), handguns (a loose row of squares, each with a barrel towards
 // the enemy), pavises (a row of tall shields). The rows take `count`.
-// A work with style trench zigzags, the default is a straight wall.
+// A work with style trench zigzags, one with style chain is a row of links, such as a boom across a harbour, and the
+// default is a straight wall.
 // `facing` is the compass bearing the unit faces. `width` runs along its front, `depth` front to back.
 // `bow` bends the front: positive pushes the centre towards the enemy, negative draws it back.
 // `side` is a family of the story, or of the battle on a battle's page, `neutral` for a grey, or a hex colour.
@@ -59,8 +60,11 @@ export default function battlePlan(spec, { families = {} } = {}) {
     else add([ribbon(smooth(w.path.map(toM)), w.width ?? 80, w.width ?? 80)], { ...wet, ...label(w) });
   }
   for (const w of works) {
-    const pts = w.path.map(toM), width = w.width ?? 40;
-    add([ribbon(w.style === 'trench' ? zigzag(pts, width * 3, width * 1.2) : pts, width, width)], { ...look(w.side ?? 'neutral'), ...label(w) });
+    const pts = w.path.map(toM), width = w.width ?? 40, props = { ...look(w.side ?? 'neutral'), ...label(w) };
+    if (w.style !== 'chain') { add([ribbon(w.style === 'trench' ? zigzag(pts, width * 3, width * 1.2) : pts, width, width)], props); continue; }
+    // the reader can point at the water between the links as well as at the links
+    if (w.name != null) add([ribbon(pts, width, width)], { ...props, hit: true });
+    for (const rings of chainLinks(pts, width)) add(rings, props);
   }
   // a named row of pieces gets an undrawn footprint, so the reader can point at the gaps as well as the pieces
   const gappy = new Set(['light', 'archers', 'irregular', 'elephants', 'chariots', 'siege', 'ships', 'submarines', 'artillery', 'aircraft',
@@ -297,6 +301,18 @@ const length = pts => pts.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - pts
 function zigzag(pts, step, amp) {
   const L = length(pts), n = Math.max(2, Math.round(L / step)), at = [...Array(n + 1)].map((_, i) => cutAt(pts, L * i / n).at(-1)), nm = normals(at);
   return at.map((p, i) => i === 0 || i === n ? p : [p[0] + nm[i][0] * amp * (i % 2 ? 1 : -1), p[1] + nm[i][1] * amp * (i % 2 ? 1 : -1)]);
+}
+
+// links t wide along a line, an open oval and a flat bar by turns, each reaching into the next
+function chainLinks(pts, t) {
+  const L = length(pts), l = Math.min(t * 2.4, L), n = Math.max(1, Math.round((L - l) / (l * 0.62)) + 1), s = n === 1 ? 0 : (L - l) / (n - 1);
+  return [...Array(n)].map((_, i) => {
+    const at = l / 2 + i * s, c = cutAt(pts, at).at(-1), e = cutAt(pts, Math.min(L, at + l / 4)).at(-1), b = cutAt(pts, Math.max(0, at - l / 4)).at(-1);
+    const len = Math.hypot(e[0] - b[0], e[1] - b[1]) || 1, tx = (e[0] - b[0]) / len, ty = (e[1] - b[1]) / len;
+    const place = ring => ring.map(([p, q]) => [c[0] + p * tx - q * ty, c[1] + p * ty + q * tx]);
+    // the hole winds against the outline, so the map leaves it open
+    return i % 2 ? [place(stadium(l / 2, t * 0.14))] : [place(stadium(l / 2, t / 2)), place(stadium(l / 2 - t * 0.22, t * 0.28).reverse())];
+  });
 }
 
 // a solid arrow is one ring, a dashed one a head and dashes, fire three thin arrows that spread towards the target

@@ -859,7 +859,9 @@ emblem:
   wagons out at those compass bearings from its centre, for a gate, an opening or a breach.
 - Arrows curve through their points. `dashed` marks a retreat, and `fire` marks shooting, drawn as three
   thin arrows that spread towards the target. Each arrow has a thin edge in the paper colour, and a later
-  arrow draws over an earlier one. A work is a straight wall, or a zigzag with `style: trench`.
+  arrow draws over an earlier one.
+- A work is a straight wall `width` metres thick, a zigzag with `style: trench`, or a row of links `width`
+  metres wide with `style: chain`, for a boom across a harbour.
 - Any unit, arrow, work or water can carry a `name`, shown when the reader points at it. Pieces with the same
   `id` highlight together, and other languages come from the catalogue as for any emblem.
 
