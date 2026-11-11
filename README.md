@@ -747,8 +747,11 @@ content/shared/battles/ankara-1402/
 
 The card shows as a crossed swords marker and opens on the map in the shape of a Wikipedia infobox: name, date,
 result, one column per side with commanders, strength and casualties, photos stepped with arrows, and a source
-link. An optional `front` line is drawn while a page shows the battle. On a phone the card stands at the top of the
-page's text, under its title, the marker pulses faintly, and a tap on the marker opens the text at the card.
+link. An optional `front` line is drawn while a page shows the battle. On a map 700 px wide or more the card opens
+docked at the map's end edge, and the page's frame fits the room beside it. Closing the card gives the frame the
+whole map, and the marker opens the card again. A narrower map shows the card above the marker. On a phone the card
+stands at the top of the page's text, under its title, the marker pulses faintly, and a tap on the marker opens the
+text at the card.
 
 ```yaml
 # battle.yaml

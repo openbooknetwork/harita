@@ -116,43 +116,56 @@ function battleCard(b){
 const cardInText = () => phone.matches && !!extra && !!host.showText;
 function renderTextCard(page){ extra?.replaceChildren(...(page.battle ? [battleCard(H.battles[page.battle])] : [])); }
 let battlePopup = null;
-// a map with room for the card beside the battle shows it there, a narrow one above it
+const rem = () => parseFloat(getComputedStyle(document.documentElement).fontSize);
+// a map with room for the card beside the page's frame docks it at its end edge, a narrow one shows it above the battle
 const cardBeside = () => $('map').getBoundingClientRect().width >= 700;
+// the docked card: 28.5rem wide, at most half the map
+const dockWidth = () => Math.min(28.5 * rem(), $('map').clientWidth / 2 - 1.429 * rem());
+// the page's frame leaves the docked card its room until the reader shuts the card on this page
+const cardDocked = page => !!page.battle && !cardInText() && cardBeside() && !ML.cardShut;
 function openBattle(id){
   const m = ML.map; if (!m) return;
   closeBattle();
-  const beside = cardBeside(), at = H.battles[id].lnglat;
-  // beside, the card clears the battle's label, which hangs centred under the marker
-  const mark = beside && ML.markers['battle:' + id]?.getElement();
-  const offset = mark ? Math.max(30, mark.getBoundingClientRect().width / 2 + 12) : 30;
-  const popup = new maplibregl.Popup({ offset, maxWidth: 'none', focusAfterOpen: false, anchor: beside ? 'left' : 'bottom', closeOnClick: false }).setLngLat(at).setDOMContent(battleCard(H.battles[id])).addTo(m);
+  if (cardBeside()) return dockBattle(id);
+  const at = H.battles[id].lnglat;
+  const popup = new maplibregl.Popup({ offset: 30, maxWidth: 'none', focusAfterOpen: false, anchor: 'bottom', closeOnClick: false }).setLngLat(at).setDOMContent(battleCard(H.battles[id])).addTo(m);
   battlePopup = popup;
   // the card's own × closes it; that counts as the reader closing it, so the map slides back
   popup.on('close', () => { if (battlePopup !== popup) return; battlePopup = null; restoreNudge(); });
-  // beside: the map slides so the battle and its card sit together in the middle, the battle left of centre.
-  // above: the map slides only if the card runs past its edge
+  // the map slides only if the card runs past its edge
   const place = () => {
     if (battlePopup !== popup) return;
     const r = popup.getElement().getBoundingClientRect(), s = $('map').getBoundingClientRect(), pad = 12;
     let dx = 0, dy = 0;
-    if (beside) {
-      const p = m.project(at), span = r.right - s.left - p.x;
-      dx = p.x - (s.width - span) / 2; dy = p.y - s.height / 2;
-    } else {
-      if (r.top < s.top + pad) dy = r.top - (s.top + pad); else if (r.bottom > s.bottom - pad) dy = r.bottom - (s.bottom - pad);
-      if (r.left < s.left + pad) dx = r.left - (s.left + pad); else if (r.right > s.right - pad) dx = r.right - (s.right - pad);
-    }
+    if (r.top < s.top + pad) dy = r.top - (s.top + pad); else if (r.bottom > s.bottom - pad) dy = r.bottom - (s.bottom - pad);
+    if (r.left < s.left + pad) dx = r.left - (s.left + pad); else if (r.right > s.right - pad) dx = r.right - (s.right - pad);
     if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
-    // phones and the card beside the battle remember where the map was, to slide back when the reader closes the card
-    if (beside || matchMedia('(max-width:900px)').matches) ML.beforeNudge = m.getCenter();
+    // phones remember where the map was, to slide back when the reader closes the card
+    if (matchMedia('(max-width:900px)').matches) ML.beforeNudge = m.getCenter();
     m.panBy([dx, dy], { duration: reduced ? 0 : 400 });
   };
   // the slide waits for the page's camera to land, so the two moves do not fight
   requestAnimationFrame(() => { if (m.isMoving()) m.once('moveend', place); else place(); });
 }
+// The docked card stands under the map tools and clears the credits at the bottom. The page's camera already left it
+// room, except after the reader shut it and opens it again from the battle's marker.
+function dockBattle(id){
+  const dock = document.createElement('div'), top = el.tools.getBoundingClientRect().bottom - el.map.getBoundingClientRect().top + 0.571 * rem();
+  dock.className = 'bc-dock'; dock.setAttribute('role', 'dialog'); dock.setAttribute('aria-label', L(H.battles[id].name));
+  Object.assign(dock.style, { top: top + 'px', width: dockWidth() + 'px', maxHeight: `calc(100% - ${top}px - 3.2rem)` });
+  const x = document.createElement('button'); x.type = 'button'; x.className = 'bc-close'; x.setAttribute('aria-label', T().close); x.textContent = '×';
+  x.onclick = shutBattle;
+  dock.append(battleCard(H.battles[id]), x);
+  el.map.appendChild(dock);
+  battlePopup = { docked: true, remove: () => dock.remove() };
+  if (ML.cardShut) { ML.cardShut = false; camera(here(), reduced ? 0 : 600); }
+}
+// the reader shut the docked card: the page's frame takes the whole map again
+function shutBattle(){ ML.cardShut = true; closeBattle(); camera(here(), reduced ? 0 : 600); }
 // restore: the reader closed the card, so undo the slide; a page change or a new card closes without it
 function closeBattle(restore = false){
   const p = battlePopup; if (!p) return;
+  if (p.docked && restore) return shutBattle();
   battlePopup = null; p.remove();
   if (restore) restoreNudge(); else ML.beforeNudge = null;
 }
@@ -231,7 +244,7 @@ function placeLabels(){
 }
 
 // ---------- map ----------
-const ML = { map:null, ready:false, markers:{}, legs:{}, anim:{}, shown:{}, camera:0, zoneData:new Set(), zoneHide:{} };
+const ML = { map:null, ready:false, markers:{}, legs:{}, anim:{}, shown:{}, camera:0, zoneData:new Set(), zoneHide:{}, cardShut:false };
 function mapInit(){
   if (!window.maplibregl) { $('map').innerHTML = `<div class="fail">${esc(T().map_failed_cdn)}</div>`; return; }
   const [w, s, e, n] = H.extent;
@@ -473,6 +486,7 @@ function legMarkers(page){
 }
 function mapApply(page, first){
   const m = ML.map; if (!m || !ML.ready) return;
+  ML.cardShut = false;
   camera(page, first ? 0 : DUR);
   renderView();
   ML.hl = null; $('hl-label').hidden = true;
@@ -552,8 +566,11 @@ function bandHeight(page){
 }
 // the frame of a page: the shell's padding, and with callouts the bands above and below, kept within 60% of the map
 function framePadding(page){
-  const p = fitPadding(); if (!calloutsOn()) return p;
-  const pad = typeof p === 'number' ? { top: p, right: p, bottom: p, left: p } : { ...p }, top = Math.max(pad.top, toolsBottom());
+  const p = fitPadding(), pad = typeof p === 'number' ? { top: p, right: p, bottom: p, left: p } : { ...p };
+  // the docked card stands at the end edge: the right, or the left in a language written right to left
+  if (cardDocked(page)) pad[document.documentElement.dir === 'rtl' ? 'left' : 'right'] += dockWidth() + 0.714 * rem();
+  if (!calloutsOn()) return pad;
+  const top = Math.max(pad.top, toolsBottom());
   const band = Math.max(0, Math.min(bandHeight(page), (el.map.clientHeight * 0.6 - top - pad.bottom) / 2));
   return { ...pad, top: top + band, bottom: pad.bottom + band };
 }
@@ -798,7 +815,8 @@ return {
   show(page, first) { renderLegend(M(page)); renderTextCard(M(page)); colourPlaces(); renderTally(M(page)); mapApply(M(page), first); },
   lang(l) { renderViewLabels(); renderTextCard(here()); tallyLang(); if (H.labels && ML.ready) renderLabels(); renderLegend(here()); colourPlaces(); mapMarkers(here(), true); if (battlePopup && here().battle) openBattle(here().battle); },
   theme() { mapTheme(); legendColors(here()); },
-  resize() { if (ML.map && ML.ready) { ML.map.resize(); camera(here(), reduced ? 0 : 600); } },
+  // the card opens again, so it docks or stands above the battle as the new width says
+  resize() { if (ML.map && ML.ready) { ML.map.resize(); camera(here(), reduced ? 0 : 600); if (battlePopup && here().battle) openBattle(here().battle); } },
   escape() { closeBattle(true); clearHighlight(); if (CO.open) tapCallout(CO.open); },
   point(id, on) { popMarker(id, on); },
   highlight(kind, id) { setHighlight(kind, id, null); },

@@ -40,3 +40,12 @@
   .tally:not(.open) .tl-note{display:none}
   body[data-tab="text"] .tally{display:none}
 }
+/* A battle's card on a wide map, docked at the map's end edge under the map tools. The script sets its top, width and
+   height, and the page's frame fits the room beside it. The card scrolls inside it. */
+.bc-dock{position:absolute;inset-inline-end:.714rem;z-index:4;display:flex;flex-direction:column;background:var(--panel);color:var(--ink);
+  border:1px solid var(--rule);border-radius:4px;box-shadow:0 4px 18px rgba(0,0,0,.3)}
+.bc-dock .bc{flex:1 1 auto;min-height:0;max-height:none}
+.bc-dock .bc-close{position:absolute;inset-inline-end:.429rem;top:.429rem;width:1.857rem;height:1.857rem;border:0;border-radius:3px;
+  background:none;color:var(--ink-2);font:18px/1 var(--body);cursor:pointer}
+.bc-dock .bc-close:hover{color:var(--ink);background:var(--paper-2)}
+.bc-dock .bc-close:focus-visible{outline:2px solid var(--accent)}
