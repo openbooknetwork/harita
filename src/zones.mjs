@@ -93,13 +93,15 @@ function landOf(zone) {
   return land ? { land: land.geometry, area: turf.area(land) / 1e6, box: turf.bbox(land) } : null;
 }
 
-// The cache of land cuts, keyed by the drawing, its clip and this code, and of overlaps, keyed by two land cuts. A run
-// measures only what changed and keeps what it used, a partial run such as --like everything else too.
+// The cache of land cuts, keyed by the drawing, its clip and this code, and of overlaps and border gaps, keyed by two
+// land cuts. A run measures only what changed and keeps what it used, a partial run such as --like everything else too.
+const TABLES = ['land', 'overlap', 'gap'];
+const tables = () => Object.fromEntries(TABLES.map(t => [t, {}]));
 function openCache(dir, { partial = false } = {}) {
   const file = dir && path.join(dir, 'zone-compare.json');
-  let saved = { land: {}, overlap: {} };
-  try { if (file) saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { saved = { land: {}, overlap: {} }; }
-  const used = { land: {}, overlap: {} };
+  let saved = tables();
+  try { if (file) saved = { ...saved, ...JSON.parse(fs.readFileSync(file, 'utf8')) }; } catch { saved = tables(); }
+  const used = tables();
   let changed = false;
   const get = (table, key, make) => {
     if (!(key in used[table])) { used[table][key] = key in saved[table] ? saved[table][key] : (changed = true, make()); }
@@ -109,7 +111,8 @@ function openCache(dir, { partial = false } = {}) {
     if (!file || !changed && Object.keys(saved.land).length === Object.keys(used.land).length) return;
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const tmp = `${file}.${process.pid}`;
-    fs.writeFileSync(tmp, JSON.stringify(partial ? { land: { ...saved.land, ...used.land }, overlap: { ...saved.overlap, ...used.overlap } } : used)); fs.renameSync(tmp, file);
+    const kept = partial ? Object.fromEntries(TABLES.map(t => [t, { ...saved[t], ...used[t] }])) : used;
+    fs.writeFileSync(tmp, JSON.stringify(kept)); fs.renameSync(tmp, file);
   };
   return { get, save };
 }
@@ -145,7 +148,10 @@ function comparePairs(zones, { sameStory = false, against = null, store = openCa
   const report = (a, b, overlap, exact) => {
     if (seen.has(key(a, b)) || seen.has(key(b, a))) return;
     seen.add(key(a, b));
-    pairs.push({ a, b, overlap, exact, gap: exact ? { km: 0, at: null, to: null } : widestGap(a, b) });
+    // measured in the order of the land keys, so a pair met from either side reads the same entry
+    const [x, y] = [a, b].sort((p, q) => p.landKey < q.landKey ? -1 : 1);
+    const gap = exact ? { km: 0, at: null, to: null } : store.get('gap', `${x.landKey} ${y.landKey}`, () => widestGap(x, y));
+    pairs.push({ a, b, overlap, exact, gap });
   };
   const wanted = (a, b) => a !== b && (sameStory || a.story === null || a.story !== b.story) && (!against || against.includes(a) || against.includes(b));
   // copies: one map read each

@@ -1447,6 +1447,23 @@ test('an inline text without the default language names its file, and --like kee
   assert.ok(before > 0 && cache() >= before, `${before} overlaps cached, ${cache()} after --like`);
 });
 
+test('harita zones reads the border gaps from its cache, and measures them again for a cache written without them', async () => {
+  const root = copy();
+  secondStory(root);
+  for (const f of ['pages/020-althing/zones/island.geojson', 'pages/010-landnam/zones/southwest.geojson']) redraw(root, `content/second-story/${f}`, 0.05);
+  const gaps = pairs => pairs.map(p => `${p.a.id} ${p.gap.km}`).sort();
+  const measured = gaps(zones({ root, log: quiet }));
+  const file = path.join(root, '.cache/kitap/zone-compare.json'), saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(Object.keys(saved.gap).length, 2);
+  // an entry changed in the cache shows, so the second run read it in place of measuring
+  for (const k of Object.keys(saved.gap)) saved.gap[k] = { km: 999, at: [-20, 64], to: [-20, 64.1] };
+  fs.writeFileSync(file, JSON.stringify(saved));
+  assert.deepEqual(zones({ root, log: quiet }).map(p => p.gap.km), [999, 999]);
+  delete saved.gap;
+  fs.writeFileSync(file, JSON.stringify(saved));
+  assert.deepEqual(gaps(zones({ root, log: quiet })), measured);
+});
+
 // --- what the final 0.4.0 review found ---
 test("a broken zone file in another story leaves a story built alone working, and a zones.yaml entry keeps its own clip", async () => {
   const root = copy();
