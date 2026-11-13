@@ -247,7 +247,7 @@ test('harita image and harita upload refuse an original that is too large, of an
 
 test('harita build --strict asks one request of an unchanged story, asks only for new keys, and names harita upload', async () => {
   const root = project(), farm = await shown(root, 'farm', svg('farm'));
-  await assert.rejects(make(root, { strict: true }), /content\/settlement-of-iceland: the store holds no upload of this story, kitap upload --story settlement-of-iceland puts its objects there/);
+  await assert.rejects(make(root, { strict: true }), /content\/settlement-of-iceland: the store holds no upload of this story, \S+\/meta\/settlement-of-iceland\/latest\.json answered HTTP 404, kitap upload --story settlement-of-iceland puts its objects there/);
   await put(root);
   server.requests = [];
   const lines = [];
@@ -257,7 +257,7 @@ test('harita build --strict asks one request of an unchanged story, asks only fo
   // a new image: the tree in latest.json matches every directory but the new one, whose three keys are asked for
   const field = await shown(root, 'field', svg('field'));
   server.requests = [];
-  await assert.rejects(make(root, { strict: true }), new RegExp(`content/settlement-of-iceland: the store lacks the images of ${field.dir}, kitap upload --story settlement-of-iceland puts them there`));
+  await assert.rejects(make(root, { strict: true }), new RegExp(`content/settlement-of-iceland: the store lacks the images of ${field.dir}, HTTP 404 for 3 keys, first \\S+, kitap upload --story settlement-of-iceland puts them there`));
   assert.deepEqual(server.requests.filter(r => !r.includes('/meta/')).sort(), keysOf(root, field).map(k => `GET /pub/${k}`).sort());
   // a folder moved to content/shared/images/ keeps its keys, which the stored tree lists, so the check asks for none
   await put(root);
@@ -348,7 +348,9 @@ test('a build writes redirects.json with both paths of every image folder', asyn
 });
 
 const site = (root, opts = {}) => deploy({ root, log: quiet, progress: quiet, wait: 1, ...opts });
-const distFiles = root => fs.readdirSync(path.join(root, 'dist'), { recursive: true }).filter(f => fs.statSync(path.join(root, 'dist', f)).isFile()).map(f => f.split(path.sep).join('/')).sort();
+// the files a deploy uploads from dist/: all but the build's record, which goes up last as kitap-build.json
+const distFiles = root => fs.readdirSync(path.join(root, 'dist'), { recursive: true }).filter(f => fs.statSync(path.join(root, 'dist', f)).isFile()).map(f => f.split(path.sep).join('/'))
+  .filter(f => f !== '.kitap-build.json').sort();
 const sitePuts = () => server.requests.filter(r => r.startsWith('PUT /site/')).map(r => r.slice('PUT /site/'.length));
 
 test('harita deploy puts dist/ in the pages bucket, scripts first, skips what matches and deletes what dist/ lacks', async () => {
@@ -359,7 +361,7 @@ test('harita deploy puts dist/ in the pages bucket, scripts first, skips what ma
   const files = distFiles(root), lines = [];
   assert.ok(files.length > 14, 'the listing pages');
   const first = await site(root, { log: l => lines.push(l) });
-  assert.deepEqual([...server.site.keys()].sort(), files);
+  assert.deepEqual([...server.site.keys()].sort(), [...files, 'kitap-build.json'].sort());
   assert.deepEqual(first.uploaded.slice().sort(), files);
   assert.equal(server.site.get('index.html').type, 'text/html; charset=utf-8');
   assert.equal(server.site.get('settlement-of-iceland/story.js').type, 'text/javascript; charset=utf-8');
@@ -368,11 +370,11 @@ test('harita deploy puts dist/ in the pages bucket, scripts first, skips what ma
   const order = sitePuts(), lastScript = order.findLastIndex(k => /\.js$/.test(k)), firstPage = order.findIndex(k => k.endsWith('.html'));
   assert.ok(lastScript < firstPage, 'every script went before the first page');
   assert.match(lines.at(-1), new RegExp(`^uploaded ${files.length} files \\(\\d+\\.\\d MB\\), deleted 0, 0 were in the bucket$`));
-  // nothing changed: the listing alone, and no PUT
+  // nothing changed: the listing, and the record as the one PUT
   server.requests = [];
   const again = await site(root);
   assert.deepEqual([again.uploaded, again.deleted, again.kept], [[], [], files.length]);
-  assert.ok(server.requests.every(r => r.startsWith('GET /site/')));
+  assert.deepEqual(server.requests.filter(r => !r.startsWith('GET /site/')), ['PUT /site/kitap-build.json']);
   // one page changed and one file gone
   edit(root, 'dist/settlement-of-iceland/en/landnam/index.html', '</body>', '<!-- edited --></body>');
   fs.rmSync(path.join(root, 'dist/settlement-of-iceland/en.md'));

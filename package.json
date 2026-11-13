@@ -47,7 +47,7 @@
     "prepublishOnly": "npm test"
   },
   "dependencies": {
-    "@openbooknetwork/kitap": "^0.6.0",
+    "@openbooknetwork/kitap": "^0.7.4",
     "@turf/turf": "^7.4.0",
     "js-yaml": "^4.1.0",
     "maplibre-gl": "5.24.0",

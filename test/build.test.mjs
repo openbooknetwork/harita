@@ -1001,7 +1001,7 @@ test("a story's cover can name an image, and the image ships once", async () => 
   append(root, 'site.yaml', 'url: https://example.org/atlas');
   const r = await make(root), key = originalKey(root, id);
   assert.equal(r.stories[0].cover, `assets/${key}`);
-  assert.ok(read(root, 'index.html').includes(`<div class="cover"><img src="assets/${key}" alt=""></div>`));
+  assert.ok(read(root, 'index.html').includes(`<div class="cover"><picture><img src="assets/${key}" alt=""></picture></div>`));
   assert.ok(fs.existsSync(path.join(root, 'dist/assets', key)) && !fs.existsSync(path.join(root, 'dist/settlement-of-iceland/cover.svg')));
   for (const f of ['settlement-of-iceland/en/index.html', 'index.html']) assert.ok(read(root, f).includes(`<meta property="og:image" content="https://example.org/atlas/assets/${key}">`), f);
   edit(root, `${STORY}/story.yaml`, `cover: ${id}`, 'cover: nowhere-a1b2c3');
