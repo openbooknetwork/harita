@@ -160,7 +160,8 @@ A story's hash tree has a directory per image folder the story shows, with the i
 keys, and the root hash the sha256 of the sorted lines `<directory hash> <directory>`.
 
 `harita build --strict` fails when the store lacks an object a page links to, and names the image folders, the
-count of missing tiles and `harita upload --story <id>`. For each story it requests the meta file of the tree's
+count of missing tiles and `harita upload --story <id>`. `--strict --no-store` runs every other strict check and
+leaves the store unasked, for a story whose images are not uploaded yet. For each story it requests the meta file of the tree's
 root hash, which exists once the story is complete. Else it reads the tree `latest.json` names, and asks for the first
 byte of each key of the directories that differ that the stored tree lacks. A story without `latest.json`
 fails at once. An unchanged story costs one request, and every request goes through `assets.url`, so the check
@@ -528,7 +529,8 @@ stacks its letters as it is written. A name in a script with capitals shows in s
 
 ```yaml
 date: 15 to 19 May 1919                       # display text, any wording
-when: { from: 1919-05-15, to: 1919-05-19 }    # optional, for the order check
+when: { from: 1919-05-15, to: 1919-05-19 }    # optional, for the order check; a year BC takes a minus,
+                                              # as historians count it: -0335-03 is March 335 BC
 title: Occupation, and the landing at Samsun
 bbox: [25.5, 35.6, 43.5, 42.6]
 camera: { pitch: 55, bearing: 20 }  # optional, the view in 3D, see Relief and 3D
