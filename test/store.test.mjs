@@ -382,7 +382,8 @@ test('harita deploy puts dist/ in the pages bucket, scripts first, skips what ma
   const third = await site(root, { log: l => lines.push(l) });
   assert.deepEqual([third.uploaded, third.deleted, third.kept], [['settlement-of-iceland/en/landnam/index.html'], ['settlement-of-iceland/en.md'], files.length - 2]);
   assert.ok(server.site.get('settlement-of-iceland/en/landnam/index.html').bytes.includes('<!-- edited -->') && !server.site.has('settlement-of-iceland/en.md'));
-  assert.equal(lines.at(-1), `uploaded 1 file (0.0 MB), deleted 1, ${files.length - 2} were in the bucket`);
+  // the one file is a page, and its size follows the kitap that wrote it
+  assert.match(lines.at(-1), new RegExp(`^uploaded 1 file \\(0\\.\\d MB\\), deleted 1, ${files.length - 2} were in the bucket$`));
 });
 
 test('harita deploy --dry-run lists what would go and writes nothing, and without pages names the pages block', async () => {
