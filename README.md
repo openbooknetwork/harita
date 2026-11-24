@@ -957,12 +957,22 @@ samsun:
   image: samsun-1919-4be2a0         # optional, shows a photo thumbnail on the map
   label: Samsun
   note: Mustafa Kemal lands, 19 May 1919
+  rank: 1                           # optional, a whole number: which of two icons shows where they would overlap
 ```
 
 A marker's label and note hang under its icon. On a wider screen, a label that would cover another marker, another
 label or a box over the map stands aside, at the nearest clear spot around its icon that lies closer to that icon
 than to any other, and a thin grey line joins the two. Labels claim their spots in the order of the page's `markers`.
 A label with no room for its note shows alone.
+
+Two icons that would stand on each other show one at a time. The viewer measures them on the screen, at every zoom
+and every size of window, so a page can mark two places a few kilometres apart in a frame of a thousand. The one of
+the higher `rank` shows, and of equal rank the one the page's `markers` lists first. A battle's swords outrank every
+marker. The other keeps its place, unseen, and the first carries a count of what waits under it, such as `+1`. A
+marker comes forward when the reader points at its name in the text, taps the count, or zooms in until the two
+stand apart, and what it then covers fades behind it. A tap on the map, or Escape, puts the page's own order back.
+A marker that waits at a page's opening view and that the text does not link is one a reader finds only by the
+count, so link it, rank it higher or leave it off the page.
 
 On a phone held upright the labels stand in bands above and below the page's area, each joined to its marker by a
 thin grey line, and the camera frames the page with room for the bands. A tap on a label or a marker shows its note.

@@ -91,6 +91,9 @@ export const Markers = z.record(Id, z.object({
   image: Id.optional(),
   label: Translatable,
   note: Translatable.default(''),
+  // which of two markers shows where their icons would stand on each other: the higher, and the other comes
+  // forward when the reader points at its name in the text, taps the count on the first, or zooms in
+  rank: z.number().int().default(0),
 }).strict());
 
 // A battle in the shape of a Wikipedia infobox, shown as a card on the map.

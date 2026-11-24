@@ -186,7 +186,7 @@ function readStory(story, ctx) {
         if (m.color && !s.families[m.color]) fail(rel(markerFile), `marker "${own}" uses unknown family "${m.color}"${s.battle ? ', add it to families in battle.yaml' : ''}`);
         const name = LEGACY_ICONS[m.icon] ?? m.icon, id = s.ns(own);
         ctx.icon(name, `${rel(markerFile)} marker "${own}"`);
-        define(E.markers, id, { id, lnglat: m.lnglat, icon: name, color: m.color ? s.fam(m.color) : null, image: m.image ? ctx.resolveImage(s, m.image, rel(markerFile)) : null,
+        define(E.markers, id, { id, lnglat: m.lnglat, rank: m.rank, icon: name, color: m.color ? s.fam(m.color) : null, image: m.image ? ctx.resolveImage(s, m.image, rel(markerFile)) : null,
           label: s.T(m.label, `markers.${own}.label`, { shared: true }), note: m.note ? s.T(m.note, `markers.${own}.note`) : ctx.emptyText() }, rel(markerFile), 'marker', dir);
       });
     });

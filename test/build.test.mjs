@@ -1498,3 +1498,13 @@ test('--share reads every catalogue before it writes, and harita image checks it
   await assert.rejects(image({ root: empty, file, name: 'farm', caption: 'x', log: quiet }), /content\/: no story\.yaml found, run kitap image from a content project/);
   assert.ok(!fs.existsSync(path.join(empty, 'content')));
 });
+
+test('a marker takes a rank, a whole number that says which of two overlapping icons shows, and has 0 without one', async () => {
+  const root = copy();
+  edit(root, `${STORY}/shared/markers.yaml`, 'icon: house', 'icon: house\n  rank: 2');
+  await make(root);
+  const ranks = Object.values(bundleOf(root).markers).map(m => m.rank);
+  assert.ok(ranks.includes(2) && ranks.every(Number.isInteger), 'the bundle carries each marker\'s rank');
+  edit(root, `${STORY}/shared/markers.yaml`, 'rank: 2', 'rank: high');
+  await assert.rejects(make(root), /markers\.yaml.*rank/s);
+});

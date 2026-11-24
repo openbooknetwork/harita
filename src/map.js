@@ -274,6 +274,7 @@ function mapInit(){
   let pending = null;
   m.on('mousemove', e => { if (!canHover.matches || !ML.ready) return; const first = !pending; pending = e; if (first) requestAnimationFrame(() => { const ev = pending; pending = null; const h = !onOverlay(ev) && hitAt(ev.point); h ? setHighlight(h.kind, h.id, ev.point) : clearHighlight(); }); });
   m.on('mouseout', () => { if (canHover.matches) clearHighlight(); });
+  m.on('click', e => { if (ML.ready && !onOverlay(e) && CL.tap) { CL.tap = null; placeClashes(true); } });
   m.on('click', e => { if (canHover.matches || !ML.ready || onOverlay(e)) return; const h = hitAt(e.point); h ? setHighlight(h.kind, h.id, null) : clearHighlight(); });
   m.on('load', () => {
     m.setPaintProperty('bg', 'background-color', css('--sea')); // the theme may have changed while the map loaded
@@ -541,10 +542,64 @@ function linkPlaces(){
   for (const el of places) phone.matches ? el.removeAttribute('tabindex') : el.tabIndex = 0;
   for (const id in ML.markers) { const el = ML.markers[id].getElement(); el.classList.toggle('named', named.has(id)); el.classList.remove('pop'); }
 }
-const popMarker = (id, on) => ML.markers[id]?.getElement().classList.toggle('pop', on);
+// a marker the reader points at comes forward where another icon covers it
+const popMarker = (id, on) => { ML.markers[id]?.getElement().classList.toggle('pop', on); if (on) CL.point = id; else if (CL.point === id) CL.point = null; placeClashes(); };
 // pointing at a marker the text names pops it and tints its places in the text
 const pointMarker = (id, on) => { popMarker(id, on); for (const el of story.querySelectorAll(`.place[data-marker="${CSS.escape(id)}"]`)) el.classList.toggle('on', on); };
 
+
+// ---------- clashes: two icons that would stand on each other show one at a time ----------
+// Where the icons of two markers of a page overlap on the screen, the one of the higher rank shows, and of equal
+// rank the one the page lists first. A battle's swords outrank every marker. The other keeps its place, unseen,
+// and the first carries a count of what waits under it. A marker comes forward when the reader points at its name
+// in the text, taps a count, or zooms in until the two stand apart, and what it then covers fades behind it. It is
+// worked out from the icons' places on the screen, so it holds at every zoom and every size of window.
+const CL = { key: '', point: null, tap: null };
+const clashRank = id => id.startsWith('battle:') ? Infinity : H.markers[id]?.rank ?? 0;
+// which icons show: ids in the order they claim their place, each with its circle. Returns each id's state, '' for
+// shown, 'hid' or 'dim', and under each icon that shows the ids that wait or fade behind it
+function clashes(order, circle, forward){
+  const state = {}, under = {}, placed = [];
+  for (const id of order) {
+    const c = circle[id], hit = placed.find(p => Math.hypot(p.c.x - c.x, p.c.y - c.y) < (p.c.r + c.r) * 0.85);
+    if (!hit) { state[id] = ''; placed.push({ id, c, top: id }); continue; }
+    // what the forward marker covers fades and still holds its place, so nothing else shows up under the pointer
+    state[id] = hit.top === forward && hit.id === forward ? 'dim' : 'hid';
+    (under[hit.top] ??= []).push(id);
+    if (state[id] === 'dim') placed.push({ id, c, top: hit.top });
+  }
+  return { state, under };
+}
+function placeClashes(force){
+  const m = ML.map; if (!m || !ML.ready) return;
+  const page = here(), base = [...(page.battle ? ['battle:' + page.battle] : []), ...page.markers].filter(id => ML.markers[id]);
+  if (CL.tap && !base.includes(CL.tap)) CL.tap = null;
+  const forward = base.includes(CL.point) ? CL.point : CL.tap;
+  const key = [m.getZoom().toFixed(2), m.getPitch().toFixed(0), m.getBearing().toFixed(0), el.map.clientWidth, el.map.clientHeight, forward, lang(), base.join()].join('|');
+  if (!force && key === CL.key) return;
+  CL.key = key;
+  base.sort((a, b) => clashRank(b) - clashRank(a)); // a stable sort: page order within a rank
+  const circle = {};
+  for (const id of base) { const r = ML.markers[id].getElement().querySelector('.wrap').getBoundingClientRect(); circle[id] = { x: r.left + r.width / 2, y: r.top + r.height / 2, r: Math.max(r.width, r.height) / 2 / (ML.markers[id].getElement().classList.contains('pop') ? 1.25 : 1) }; }
+  const order = forward ? [forward, ...base.filter(id => id !== forward)] : base;
+  const { state, under } = clashes(order, circle, forward);
+  for (const id of base) {
+    const mk = ML.markers[id].getElement(), wrap = mk.querySelector('.wrap'), n = under[id]?.length ?? 0;
+    mk.classList.toggle('hid', state[id] === 'hid'); mk.classList.toggle('dim', state[id] === 'dim');
+    let more = wrap.querySelector(':scope > .more');
+    if (!n) { more?.remove(); continue; }
+    if (!more) {
+      more = document.createElement('button'); more.type = 'button'; more.className = 'more'; wrap.appendChild(more);
+      // a tap brings the next of the group forward, and after the last the page's own order is back
+      more.onclick = e => {
+        e.stopPropagation();
+        const group = [id, ...more.under].sort((a, b) => base.indexOf(a) - base.indexOf(b)), next = group[(group.indexOf(id) + 1) % group.length];
+        CL.tap = next === group[0] ? null : next; placeClashes(true);
+      };
+    }
+    more.under = under[id]; more.textContent = '+' + n; more.setAttribute('aria-label', '+' + n);
+  }
+}
 
 // ---------- callouts: on an upright phone the markers' names stand in bands above and below the page's area ----------
 // A phone held upright has a tall map and most pages a wide area, so the camera keeps a band free above and below the
@@ -640,6 +695,7 @@ function renderCallouts(page){
 }
 const measureCallouts = () => { for (const it of CO.items) it.size = { w: it.div.offsetWidth, h: it.div.offsetHeight }; };
 function tapCallout(it){
+  if (ML.markers[it.id]?.getElement().classList.contains('hid')) { CL.tap = it.id; placeClashes(true); }
   if (it.battle) { if (cardInText()) host.showText(extra); return; }
   if (!it.note) return;
   CO.open = CO.open === it ? null : it;
@@ -701,22 +757,24 @@ function shiftName(it, dx, dy){
 }
 function placeLeaders(){
   if (!LD.svg) return;
+  placeClashes(); // which icons show comes first: a name is placed for an icon the reader sees
   LD.svg.style.display = CO.on ? 'none' : '';
   if (CO.on) { for (const it of LD.items) { shiftName(it, 0, 0); it.mk.classList.remove('ld-short'); } return; } // the callouts carry the names on an upright phone
   const box = ML.map.getContainer().getBoundingClientRect(), W = box.width, Ht = box.height;
   const rel = r => ({ l: r.left - box.left, t: r.top - box.top, r: r.right - box.left, b: r.bottom - box.top });
+  const unseen = LD.items.map(it => it.mk.classList.contains('hid'));
   const icons = LD.items.map(it => rel(it.icon.getBoundingClientRect()));
   // the boxes over the map: its tools, the tally and the legend
   const panels = [el.tools, TL.box, legend].filter(p => p && !p.hidden && p.offsetParent).map(p => rel(p.getBoundingClientRect())).filter(r => overlaps(r, { l: 0, t: 0, r: W, b: Ht }));
   const taken = [...panels];
   LD.items.forEach((it, i) => {
     const ic = icons[i], cx = (ic.l + ic.r) / 2, cy = (ic.t + ic.b) / 2, ir = (ic.b - ic.t) / 2;
-    if (ic.r < 0 || ic.l > W || ic.b < 0 || ic.t > Ht) { shiftName(it, 0, 0); it.line.style.display = 'none'; return; }
+    if (unseen[i] || ic.r < 0 || ic.l > W || ic.b < 0 || ic.t > Ht) { shiftName(it, 0, 0); it.line.style.display = 'none'; return; }
     // the name's box where it hangs under the icon, read without the shift it has now
     const a = moveBox(rel(it.name.getBoundingClientRect()), -it.dx, -it.dy), n = it.note ? moveBox(rel(it.note.getBoundingClientRect()), -it.dx, -it.dy) : a;
     const reach = (r, o) => Math.hypot(Math.max(o.l - r.r, r.l - o.r, 0), Math.max(o.t - r.b, r.t - o.b, 0));
     const clear = (r, aside) => r.l >= 0 && r.t >= 0 && r.r <= W && r.b <= Ht && !taken.some(t => overlaps(r, t))
-      && !icons.some((o, k) => k !== i && (overlaps(r, grow(o, LD_PAD)) || aside && reach(r, o) < reach(r, ic)));
+      && !icons.some((o, k) => k !== i && !unseen[k] && (overlaps(r, grow(o, LD_PAD)) || aside && reach(r, o) < reach(r, ic)));
     const spot = home => {
       if (clear(home, false)) return [0, 0];
       // while the map moves a name keeps the spot it has while that stays clear, so it does not hop about
@@ -817,7 +875,7 @@ return {
   theme() { mapTheme(); legendColors(here()); },
   // the card opens again, so it docks or stands above the battle as the new width says
   resize() { if (ML.map && ML.ready) { ML.map.resize(); camera(here(), reduced ? 0 : 600); if (battlePopup && here().battle) openBattle(here().battle); } },
-  escape() { closeBattle(true); clearHighlight(); if (CO.open) tapCallout(CO.open); },
+  escape() { closeBattle(true); clearHighlight(); if (CO.open) tapCallout(CO.open); if (CL.tap) { CL.tap = null; placeClashes(true); } },
   point(id, on) { popMarker(id, on); },
   highlight(kind, id) { setHighlight(kind, id, null); },
 };

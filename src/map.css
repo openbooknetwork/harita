@@ -15,6 +15,17 @@
 .leaders line{stroke:var(--ink-2);stroke-width:1;opacity:.8}
 /* a name with no room for its note shows alone; the note keeps its place, so the name does not move */
 .mk.ld-short > small{visibility:hidden}
+/* Two icons that would stand on each other show one at a time. The one that waits keeps its place and its size,
+   unseen, and the one that stands in front of a marker the reader points at fades. The count on an icon says how
+   many wait under it, and a tap on it brings the next forward. */
+.mk.hid{opacity:0!important;pointer-events:none!important}
+.mk.dim{opacity:.3!important;pointer-events:none!important}
+.mk.hid *,.mk.dim *{pointer-events:none!important}
+.mk{transition:opacity .2s}
+.mk .more{position:absolute;top:-.357rem;inset-inline-end:-.714rem;min-width:1.286rem;height:1.286rem;padding:0 .214rem;border:1.5px solid var(--paper);border-radius:.643rem;
+  background:var(--ink);color:var(--paper);font:700 .714rem/1.071rem var(--body);text-align:center;cursor:pointer;pointer-events:auto}
+.mk .more:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+@media (prefers-reduced-motion:reduce){.mk{transition:none}}
 /* The tally: its label, the page's figure and a note in a box at the top of the map, in the corner the 2D | 3D switch
    leaves free. A phone sets it under the map tools, with the note behind an info button. The box is 17rem wide, or
    as wide as its figure, and the note wraps inside it. */
