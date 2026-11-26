@@ -17,6 +17,13 @@ const require = createRequire(import.meta.url);
 
 const r5 = x => Math.round(x * 1e5) / 1e5;
 
+// A local frame for one battle: an origin [lon, lat] and the compass bearing the battle line runs along. In it a
+// point is (u, w) in metres, u along the bearing and w across it, to its right. It returns:
+//   p(u, w)        the [lon, lat] of that point
+//   face(rel)      a compass bearing rel degrees clockwise of the frame's own, for a unit's `facing`: face(90) looks along +w
+//   path(points)   a list of (u, w) points as [lon, lat] points, for an arrow or a river
+//   box(points, pad = 400)   a bbox round (u, w) points, grown by pad metres, for the page's `bbox`
+// The frame is flat: it is right to a few metres across a field of some tens of kilometres, and not across a country.
 export function frame([lon0, lat0], bearing) {
   const kx = 111320 * Math.cos(lat0 * Math.PI / 180), ky = 110540, t = bearing * Math.PI / 180;
   const u = [Math.sin(t), Math.cos(t)], w = [Math.cos(t), -Math.sin(t)];

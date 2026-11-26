@@ -751,11 +751,11 @@ test('check reports every problem in a story, and page ids limit it to those pag
   edit(root, `${STORY}/pages/020-althing/page.yaml`, 'markers: [reykjavik, thingvellir]', 'markers: [reykjavik, hof]');
   fs.rmSync(path.join(root, STORY, 'pages/020-althing/text/en.md'));
   edit(root, PLAN, 'side: "#6d4c8f"', 'side: vikings');
+  // a page with no text yet waits and is no problem: kitap shows a placeholder for it
   const all = check({ root, story, log: quiet });
-  assert.equal(all.length, 3, all.join('\n'));
+  assert.equal(all.length, 2, all.join('\n'));
   assert.match(all[0], /020-althing\/page\.yaml: unknown marker "hof"/);
-  assert.match(all[1], /020-althing: text\/en\.md is missing/);
-  assert.match(all[2], /020-fight\/page\.yaml emblem: battle-plan: unknown side "vikings"/);
+  assert.match(all[1], /020-fight\/page\.yaml emblem: battle-plan: unknown side "vikings"/);
   assert.equal(check({ root, story, pages: ['althing-1012-fight'], log: quiet }).length, 1);
   assert.deepEqual(check({ root, story, pages: ['landnam'], log: quiet }), []);
   assert.deepEqual(check({ root, story, pages: ['nowhere'], log: quiet }), ['content/settlement-of-iceland/pages: no page "nowhere"']);
@@ -826,9 +826,9 @@ test("check reports a battle's page problems beside a problem in its battle.yaml
   edit(root, `${BATTLE}/battle.yaml`, 'color: settled', 'color: allies');
   fs.rmSync(path.join(root, BATTLE, 'pages/020-fight/text/en.md'));
   const problems = check({ root, story: 'settlement-of-iceland', log: quiet });
-  assert.equal(problems.length, 2, problems.join('\n'));
+  // the battle page with no text yet waits and is no problem
+  assert.equal(problems.length, 1, problems.join('\n'));
   assert.match(problems[0], /battle\.yaml: side 2 uses "allies"/);
-  assert.match(problems[1], /020-fight: text\/en\.md is missing/);
 });
 
 test("a battle the story only names keeps its pages' texts and images out of the story", async () => {
@@ -1023,14 +1023,19 @@ test('an image folder used the wrong way stops the build, naming the folder', as
     [root => fs.writeFileSync(path.join(root, STORY, 'shared/images.yaml'), 'farm: { file: farm.svg, caption: A farm }\n'), /shared\/images\.yaml: images live in image folders/],
     [root => append(root, `${STORY}/story.yaml`, 'cover: cover.jpg'), /story\.yaml:\n  cover: the id of an image folder the story can show, kitap image <file> <name> --story <story> makes one/],
     [root => { folder(root, 'content/shared/images/farm-a1b2c3', { 'image.svg': svg, 'image.yaml': 'caption: A farm\n' }); use(root, '../images/farm-a1b2c3'); }, /010-landnam\/text\/en\.md: unknown image "\.\.\/images\/farm-a1b2c3", an image id is lowercase letters, digits and dashes/],
-    // a shared battle sees the shared image folders alone, so it works in any story
-    [root => { folder(root, `${STORY}/shared/images/farm-a1b2c3`, { 'image.svg': svg, 'image.yaml': 'caption: A farm\n' }); append(root, `${BATTLE}/battle.yaml`, 'images: [farm-a1b2c3]'); }, /althing-1012\/battle\.yaml: unknown image "farm-a1b2c3"/],
   ];
   for (const [breakIt, message] of cases) {
     const root = copy();
     breakIt(root);
     await assert.rejects(make(root), message);
   }
+  // a shared battle sees the shared image folders alone, so it works in any story. An image only the story holds
+  // is no image to it: a placeholder until a shared folder holds it, which a strict build stops on
+  const root = copy();
+  folder(root, `${STORY}/shared/images/farm-a1b2c3`, { 'image.svg': svg, 'image.yaml': 'caption: A farm\n' });
+  append(root, `${BATTLE}/battle.yaml`, 'images: [farm-a1b2c3]');
+  await make(root);
+  await assert.rejects(make(root, { strict: true }), /farm-a1b2c3/);
 });
 
 test("a battle page without the story's language shows the battle's text with a warning, and --strict stops on it", async () => {

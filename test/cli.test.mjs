@@ -52,10 +52,18 @@ test('check prints ok and exits 0, or the problems and exits 1', () => {
   let r = run(root, 'check', 'settlement-of-iceland');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.equal(r.stdout, 'ok\n');
+  // a page with no text yet waits: check says so and still ends ok
   fs.rmSync(path.join(root, 'content/settlement-of-iceland/pages/010-landnam/text/en.md'));
   r = run(root, 'check', 'settlement-of-iceland', 'landnam');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /waiting: .*010-landnam/);
+  assert.match(r.stdout, /ok\n$/);
+  // a marker no file gives is a problem
+  const page = path.join(root, 'content/settlement-of-iceland/pages/020-althing/page.yaml');
+  fs.writeFileSync(page, fs.readFileSync(page, 'utf8').replace('markers: [reykjavik, thingvellir]', 'markers: [reykjavik, thingvellir, hof]'));
+  r = run(root, 'check', 'settlement-of-iceland', 'althing');
   assert.equal(r.status, 1);
-  assert.match(r.stdout, /010-landnam: text\/en\.md is missing\n1 problem\n$/);
+  assert.match(r.stdout, /020-althing\/page\.yaml: unknown marker "hof"\n1 problem\n$/);
 });
 
 test('coast prints the shore points inside a box, western longitudes included', () => {
