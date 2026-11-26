@@ -990,7 +990,7 @@ tally: [12000000, 20000000]
 
 A battle's pages show the figure of the story page before them. The map shows the label and the page's figure in a
 box at its top corner, written for the page's language, such as 12–20 million in English and 12–20 milyon in
-Turkish, on every page whose figure is above 0. The note stands under the figure in smaller type, and on a phone it opens from an info button.
+Turkish, on every page whose figure is above 0. The note is a tooltip under the box: pointing at the box, or reaching it with the Tab key, shows it, and on a phone a tap on the box opens and closes it.
 
 ## Adding a story
 

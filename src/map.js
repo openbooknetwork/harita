@@ -828,16 +828,22 @@ const TL = { box: null };
 function tallyInit(){
   if (!H.tally) return;
   const box = TL.box = document.createElement('div'); box.className = 'tally'; box.hidden = true; box.setAttribute('aria-live', 'polite');
-  box.innerHTML = '<span class="tl-label"></span><b class="tl-figure"></b>' + (H.tally.note ? `<button type="button" class="tl-info" aria-expanded="false" aria-controls="tally-note">${ICONS.info}</button><small class="tl-note" id="tally-note"></small>` : '');
-  const info = box.querySelector('.tl-info');
-  if (info) info.onclick = () => info.setAttribute('aria-expanded', box.classList.toggle('open'));
+  box.innerHTML = '<span class="tl-label"><span class="tl-name"></span>' + (H.tally.note ? `<span class="tl-info" role="img">${ICONS.info}</span>` : '') + '</span><b class="tl-figure"></b>'
+    + (H.tally.note ? '<small class="tl-note" id="tally-note" role="tooltip"></small>' : '');
+  // the note is a tooltip: a pointer that hovers shows it by CSS, and so does the Tab key; a tap opens and closes it
+  if (H.tally.note) {
+    box.classList.add('has-note'); box.tabIndex = 0; box.setAttribute('aria-describedby', 'tally-note');
+    box.addEventListener('click', () => { if (!canHover.matches) box.classList.toggle('open'); });
+    box.addEventListener('keydown', e => { if (e.key === 'Escape') { box.classList.remove('open'); box.blur(); } else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); box.classList.toggle('open'); } });
+    document.addEventListener('pointerdown', e => { if (!box.contains(e.target)) box.classList.remove('open'); });
+  }
   el.map.appendChild(box);
   tallyLang();
 }
 const setText = (node, text) => { if (node && node.textContent !== text) node.textContent = text; };
 function tallyLang(){
   if (!TL.box) return;
-  setText(TL.box.querySelector('.tl-label'), L(H.tally.label));
+  setText(TL.box.querySelector('.tl-name'), L(H.tally.label));
   setText(TL.box.querySelector('.tl-note'), L(H.tally.note));
   TL.box.querySelector('.tl-info')?.setAttribute('aria-label', T().tally_note);
   renderTally(here());
