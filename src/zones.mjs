@@ -13,12 +13,13 @@ import { catalogueText, flatten } from '@openbooknetwork/kitap';
 import { hash as sha, idOf, boxesMeet } from './util.mjs';
 
 const REPORT = 0.9, SAME = 0.98; // the overlap a pair is reported at, and the one that makes it the same land
-// part of each land cut's cache key: this file, world.mjs and the versions of the libraries the cut comes from
 const require = createRequire(import.meta.url);
 // the zones report is a local file, so it loads the MapLibre harita installed, without the .js or .css
 const MAPLIBRE = pathToFileURL(require.resolve('maplibre-gl')).href.replace(/\.js$/, '');
-const LAND_CODE = sha([fileURLToPath(import.meta.url), fileURLToPath(new URL('./world.mjs', import.meta.url))].map(f => fs.readFileSync(f, 'utf8'))
-  .concat(['@turf/turf', 'world-atlas'].map(m => require(`${m}/package.json`).version)));
+// Part of each land cut's cache key, and a fixed word: the engine's code and its version are no part of the key, so
+// a release never empties the cache. It is the key 0.12.3 used, kept so the cuts saved under it still hold. Change
+// the word by hand, and only when the cut itself is made another way.
+const LAND_CODE = '2d645f3d82ead01f982e550d8e3c733b686380f95bf27874caa35ef82b6b1342';
 const english = v => typeof v === 'object' && v !== null ? v.en ?? Object.values(v)[0] : v;
 
 const readJson = (root, file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { throw new Error(`${path.relative(root, file)}: ${e.message}`); } };
