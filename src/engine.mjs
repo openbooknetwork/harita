@@ -477,7 +477,7 @@ async function make({ stories, cache, out, log, options = {} }) {
 // every build compares the zones: a pair that looks alike is a warning, and with --strict a copy stops the build
 function site({ root, cache, strict, log, stories, fail }) {
   if (exists(path.join(root, 'content', 'shared', 'battles.yaml'))) fail('content/shared/battles.yaml', 'battles live in folders now, one per battle: content/shared/battles/<id>/battle.yaml');
-  const { pairs, stale, unread } = zonePairs({ root, cache, stories });
+  const { pairs, stale, unread } = zonePairs({ root, cache, stories, log });
   // a zone file that does not read stops the build of its own story, not of the others
   for (const line of unread) log(`warning: ${line}, left out of the zone comparison`);
   const page = path.relative(root, path.join(cache, 'zones.html'));

@@ -95,6 +95,9 @@ function landOf(zone) {
 
 // The cache of land cuts, keyed by the drawing, its clip and this code, and of overlaps and border gaps, keyed by two
 // land cuts. A run measures only what changed and keeps what it used, a partial run such as --like everything else too.
+// It is written as the run goes, after every EVERY new measures, so a run that is stopped keeps its work: a cold cache
+// of a whole book takes many minutes to fill.
+const EVERY = 25;
 const TABLES = ['land', 'overlap', 'gap'];
 const tables = () => Object.fromEntries(TABLES.map(t => [t, {}]));
 function openCache(dir, { partial = false } = {}) {
@@ -102,26 +105,45 @@ function openCache(dir, { partial = false } = {}) {
   let saved = tables();
   try { if (file) saved = { ...saved, ...JSON.parse(fs.readFileSync(file, 'utf8')) }; } catch { saved = tables(); }
   const used = tables();
-  let changed = false;
+  let changed = false, made = 0;
+  const write = keepAll => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const tmp = `${file}.${process.pid}`;
+    const kept = keepAll ? Object.fromEntries(TABLES.map(t => [t, { ...saved[t], ...used[t] }])) : used;
+    fs.writeFileSync(tmp, JSON.stringify(kept)); fs.renameSync(tmp, file);
+  };
   const get = (table, key, make) => {
-    if (!(key in used[table])) { used[table][key] = key in saved[table] ? saved[table][key] : (changed = true, make()); }
+    if (!(key in used[table])) {
+      if (key in saved[table]) used[table][key] = saved[table][key];
+      else {
+        used[table][key] = make(); changed = true;
+        // a run in progress keeps what the file held too, since it has not yet met every entry it will use
+        if (file && ++made % EVERY === 0) write(true);
+      }
+    }
     return used[table][key];
   };
   const save = () => {
     if (!file || !changed && Object.keys(saved.land).length === Object.keys(used.land).length) return;
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const tmp = `${file}.${process.pid}`;
-    const kept = partial ? Object.fromEntries(TABLES.map(t => [t, { ...saved[t], ...used[t] }])) : used;
-    fs.writeFileSync(tmp, JSON.stringify(kept)); fs.renameSync(tmp, file);
+    write(partial);
   };
-  return { get, save };
+  return { get, save, made: () => made };
 }
 
-// Each zone with its land cut and the key of that cut.
-function withLand(index, store) {
+// Each zone with its land cut and the key of that cut. With only, the zones outside it get no land cut: they can
+// still be found as copies, by their drawing. log is told how far a long run of new cuts has come.
+function withLand(index, store, { only = null, log = null } = {}) {
+  const todo = only ? index.filter(z => only.has(z)).length : index.length;
+  let done = 0;
   return index.map(z => {
     const landKey = sha({ g: z.geometry, clip: z.clip, v: LAND_CODE });
-    return { ...z, landKey, fingerprint: fingerprint(z.geometry), ...(store.get('land', landKey, () => landOf(z)) ?? { land: null, area: 0, box: null }) };
+    const none = { land: null, area: 0, box: null };
+    if (only && !only.has(z)) return { ...z, landKey, fingerprint: fingerprint(z.geometry), ...none };
+    const before = store.made?.() ?? 0;
+    const cut = store.get('land', landKey, () => landOf(z)) ?? none;
+    done++;
+    if (log && (store.made?.() ?? 0) > before && store.made() % 50 === 0) log(`  zones: ${done} of ${todo} cut to their land, kept in the cache as it goes`);
+    return { ...z, landKey, fingerprint: fingerprint(z.geometry), ...cut };
   });
 }
 
@@ -375,9 +397,18 @@ export function zones({ root = process.cwd(), like = null, sameStory = false, sh
 // For every build: the pairs that involve the stories built, without the pairs kept apart, the entries of apart.yaml
 // whose zones are gone, and the zone files that do not read, which the build of their own story reports. The review
 // page shows every pair.
-export function zonePairs({ root, cache, stories }) {
+// A build of named stories measures only what can pair with their zones: those zones, and each other zone whose
+// drawing's box meets one of theirs. A copy is still found anywhere, by its drawing. A build of every story measures
+// them all.
+export function zonePairs({ root, cache, stories, log = null }) {
   const unread = [], index = zoneIndex({ root, onProblem: msg => unread.push(msg) });
-  const store = openCache(cache), found = comparePairs(withLand(index, store), { store });
+  let only = null;
+  if (stories) {
+    const boxes = index.filter(z => stories.includes(z.story)).map(z => turf.bbox(turf.feature(z.geometry)));
+    only = new Set(index.filter(z => stories.includes(z.story) || boxes.some(b => boxesMeet(b, turf.bbox(turf.feature(z.geometry))))));
+  }
+  const store = openCache(cache, { partial: !!stories }), all = withLand(index, store, { only, log });
+  const found = comparePairs(all, { store, against: stories ? all.filter(z => stories.includes(z.story)) : null });
   store.save();
   const { kept, rest, stale } = sortApart(found, readApart(root), index);
   fs.mkdirSync(cache, { recursive: true });
